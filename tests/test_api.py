@@ -90,3 +90,14 @@ def test_post_checklist_yes_clears_interval_alert():
 def test_post_bad_entry_is_422():
     r = client.post("/attention", json={"log": [{"equipment_id": "FR-02"}]})
     assert r.status_code == 422
+
+
+def test_post_maintenance_complete_on_fr02():
+    row = {"equipment_id": "FR-02", "service_date": "2026-10-20T07:00:00",
+           "service_type": "maintenance complete", "technician": "Sam", "notes": ""}
+    body = client.post("/attention", json={"log": [row]}).json()
+    fr02 = next(u for u in body["units"] if u["id"] == "FR-02")
+    assert fr02["status"] == "MAINTENANCE COMPLETE" and fr02["alerts"] == []
+    assert fr02["resolved_by"] == "Sam" and fr02["resolved_alerts"]
+    others = [u for u in body["units"] if u["id"] != "FR-02"]
+    assert all(u["resolved_alerts"] == [] for u in others)

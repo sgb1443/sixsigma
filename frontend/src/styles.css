@@ -17,6 +17,7 @@ h3 { font-size: 14px; margin: 14px 0 6px; }
 .unit-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .chip { display: inline-block; padding: 2px 8px; border-radius: 12px; font-weight: 600; border: 2px solid; background: #fff; }
 .chip.OK { border-color: var(--good); }
+.chip.MAINTENANCE_COMPLETE { border-color: #0ca30c; }
 .chip.WATCH { border-color: var(--warn); }
 .chip.MAINTENANCE { border-color: var(--serious); }
 .chip.URGENT { border-color: var(--crit); }
@@ -40,3 +41,20 @@ table { border-collapse: collapse; font-size: 13px; }
 td, th { border-bottom: 1px solid var(--grid); padding: 2px 8px; text-align: left; }
 .scroll { max-height: 220px; overflow: auto; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0; }
+
+/* status bar: red / yellow / green at a glance; every box also carries the status word */
+.statusbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.light { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 110px; flex: 1 1 110px; padding: 10px 12px; border: 0; border-radius: 8px; font: inherit; text-align: left; cursor: pointer; }
+.light span { font-size: 12px; font-weight: 600; }
+.light .act { text-transform: uppercase; font-weight: 800; }
+.light.green { background: #0ca30c; color: #0b0b0b; }
+.light.yellow { background: #fab219; color: #0b0b0b; }
+.light.red { background: #d03b3b; color: #fff; }
+.statusbar .legend { flex-basis: 100%; margin: 0; }
+.confirm { font-weight: 600; }
+
+/* number tiles: tinted by level, always with a word (never colour alone) */
+.tile small { display: block; font-size: 11px; font-weight: 700; }
+.tile.lvl-green { background: rgba(12, 163, 12, 0.14); border-color: #0ca30c; }
+.tile.lvl-yellow { background: rgba(250, 178, 25, 0.22); border-color: #fab219; }
+.tile.lvl-red { background: rgba(208, 59, 59, 0.16); border-color: #d03b3b; }

@@ -3,9 +3,13 @@
 Plain functions, no web framework. They take pandas frames (telemetry, generator tests, log),
 call app/qc.py for the statistics, and return plain dicts of alerts.
 
-Alert fields: id, type (data / interval / event), tier, base_tier, since, message, task,
-acknowledged, escalated.
-Tiers, lowest to highest: OK < WATCH < MAINTENANCE < URGENT < CRITICAL. Status = highest tier.
+Alert fields: id, type (data / interval / event), tier, base_tier, since, last_seen, message,
+task, acknowledged, escalated, retriggered.
+`last_seen` is the time of the newest evidence behind the alert; the operator's "maintenance
+complete" row resolves the alerts whose last_seen is not newer than it (see _finish). It is
+documented per alert type below.
+Tiers, lowest to highest: OK < WATCH < MAINTENANCE < URGENT < CRITICAL. Status = highest tier
+among the alerts that are still active.
 """
 import pandas as pd
 
@@ -15,6 +19,8 @@ except ImportError:        # ... and when Posit Connect runs app/ as the bundle 
     from qc import fridge_summary, generator_summary
 
 TIERS = ["OK", "WATCH", "MAINTENANCE", "URGENT", "CRITICAL"]
+TIERS_SORT = {"MAINTENANCE COMPLETE": 0}   # sorts together with OK (after WATCH)
+COMPLETE = "maintenance complete"          # service_type of the operator's button row
 FRIDGE_INTERVALS = [          # (service_type, days, recommended task)
     ("coil cleaning", 90, "Clean the condenser coils and log it."),
     ("probe calibration", 180, "Calibrate the temperature probe against a reference."),
@@ -75,9 +81,10 @@ def _acknowledged(log, equipment_id, alert_id, since):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _alert(equipment_id, name, kind, tier, since, message, task):
+def _alert(equipment_id, name, kind, tier, since, message, task, last_seen=None):
+    """last_seen = time of the newest evidence; None means "as_of" (filled in by _finish)."""
     return {"id": f"{equipment_id}:{name}", "type": kind, "tier": tier, "base_tier": tier,
-            "since": since, "message": message, "task": task}
+            "since": since, "last_seen": last_seen, "message": message, "task": task}
 
 
 def _fmt(ts):
@@ -87,22 +94,44 @@ def _fmt(ts):
 
 
 def _finish(equipment_id, alerts, log, now):
-    """Mark acknowledged, apply the 24 h unacknowledged -> URGENT rule, format, set status.
+    """Acknowledge, escalate, apply "maintenance complete", format; return the unit fields.
 
-    Only MAINTENANCE alerts are escalated by the timer: WATCH is "not an action", and URGENT /
-    CRITICAL are already at the top or beyond.
+    Escalation: only MAINTENANCE alerts are escalated by the 24 h timer: WATCH is "not an
+    action", and URGENT / CRITICAL are already at the top or beyond.
+    Maintenance complete: done_at = the latest "maintenance complete" log row of this unit.
+    Alerts with last_seen <= done_at are resolved (moved to resolved_alerts); alerts with newer
+    evidence stay, marked retriggered. Nothing left after a press: status MAINTENANCE COMPLETE.
     """
     for a in alerts:
+        if a["last_seen"] is None:
+            a["last_seen"] = now
         a["acknowledged"] = _acknowledged(log, equipment_id, a["id"], a["since"])
         a["escalated"] = (a["base_tier"] == "MAINTENANCE" and not a["acknowledged"]
                           and now - a["since"] > DAY)
         if a["escalated"]:
             a["tier"] = "URGENT"
             a["message"] += " Active for more than 24 h with no acknowledgement."
-        a["since"] = _fmt(a["since"])
+        a["retriggered"] = False
+
+    rows = log[(log["equipment_id"] == equipment_id) & (log["service_type"] == COMPLETE)]
+    done_at, who, resolved = None, "", []
+    if not rows.empty:
+        last = rows.sort_values("when").iloc[-1]
+        done_at, who = last["when"], last["technician"]
+        for a in list(alerts):
+            if a["last_seen"] <= done_at:
+                alerts.remove(a)
+                resolved.append({"id": a["id"], "tier": a["tier"], "message": a["message"]})
+            else:
+                a["retriggered"] = True
+    for a in alerts:
+        a["since"], a["last_seen"] = _fmt(a["since"]), _fmt(a["last_seen"])
     status = max((a["tier"] for a in alerts), key=TIERS.index, default="OK")
+    if status == "OK" and done_at is not None:
+        status = "MAINTENANCE COMPLETE"
     alerts.sort(key=lambda a: (-TIERS.index(a["tier"]), a["id"]))
-    return status
+    return {"status": status, "maintenance_complete_at": None if done_at is None else _fmt(done_at),
+            "resolved_by": who or None, "resolved_alerts": resolved}
 
 
 def _interval_alerts(equipment_id, items, log, now, first_known, extra_last=None):
@@ -175,18 +204,21 @@ def fridge_status(telemetry, unit_id, log, as_of=None):
     beyond24 = sum(b for b, r in zip(chart["beyond_limits"], recent) if r)
     run24 = any(b for b, r in zip(chart["run_flags"], recent) if r)
     since = _streak_start(hours, chart["flags"], now)
+    # last_seen: end of the latest flagged hour in the last 24 h (hour start + 1 h)
+    flagged = [h for h, f, r in zip(hours, chart["flags"], recent) if f and r]
+    seen = flagged[-1] + pd.Timedelta(hours=1) if flagged else None
     if run24 or beyond24 >= 2:
         alerts.append(_alert(unit_id, "control chart drift", "data", "MAINTENANCE", since,
                              f"Hourly temperature outside the baseline limits {chart['lcl']:.2f}"
                              f"-{chart['ucl']:.2f} C ({beyond24} hours beyond, "
                              f"run of 8: {'yes' if run24 else 'no'}) in the last 24 h.",
-                             "Inspect the unit: door seal, coils, load and set point."))
+                             "Inspect the unit: door seal, coils, load and set point.", seen))
     elif beyond24 == 1:
         alerts.append(_alert(unit_id, "control chart watch", "data", "WATCH", since,
                              "One hour beyond the baseline limits in the last 24 h.",
-                             "Look at the chart again at the next check; no action yet."))
+                             "Look at the chart again at the next check; no action yet.", seen))
 
-    # --- Compressor duty. since = now (the onset is not tracked). ---
+    # --- Compressor duty. since = now (the onset is not tracked); last_seen = as_of. ---
     base_duty = d[d["timestamp"] < start + pd.Timedelta(days=7)]["compressor_duty"].mean()
     new_duty = d[d["timestamp"] > end - pd.Timedelta(days=7)]["compressor_duty"].mean()
     if pd.notna(base_duty) and pd.notna(new_duty) and new_duty - base_duty >= DUTY_RISE:
@@ -196,7 +228,7 @@ def fridge_status(telemetry, unit_id, log, as_of=None):
                              "points).", "Check the coils, door seal and refrigerant."))
 
     # --- Capability. Ppk < 1.33 flags; None (no variation) is not a failure here. ---
-    # since = now (the onset is not tracked).
+    # since = now (the onset is not tracked); last_seen = as_of.
     if cap["capable"] is False:
         alerts.append(_alert(unit_id, "capability low", "data", "MAINTENANCE", now,
                              f"Ppk {cap['ppk']:.2f} is below 1.33: the unit may not hold 1-6 C.",
@@ -206,6 +238,7 @@ def fridge_status(telemetry, unit_id, log, as_of=None):
     if summary["stuck_probe"]["stuck"]:
         raw = d[d["timestamp"] > end - pd.Timedelta(days=7)].dropna(subset=["temp_c"])
         run_start, run_len, since_stuck = 0, 0, raw["timestamp"].iloc[0]
+        seen_stuck = since_stuck       # last_seen: the last reading of the latest run of >= 12
         temps = raw["temp_c"].tolist()
         for i, v in enumerate(temps):
             if i > 0 and v == temps[i - 1]:
@@ -214,39 +247,45 @@ def fridge_status(telemetry, unit_id, log, as_of=None):
                 run_start, run_len = i, 1
             if run_len >= 12:
                 since_stuck = raw["timestamp"].iloc[run_start]
+                seen_stuck = raw["timestamp"].iloc[i]
         alerts.append(_alert(unit_id, "stuck probe", "data", "MAINTENANCE", since_stuck,
                              "Check probe: readings are not changing.",
-                             "Check or replace the temperature probe; verify with a reference."))
+                             "Check or replace the temperature probe; verify with a reference.",
+                             seen_stuck))
 
     # --- Readings outside 1-6 C. ---
     bad_recent = last24[(last24["temp_c"] > SPEC_HIGH) | (last24["temp_c"] < SPEC_LOW)]
+    # last_seen = the latest such reading
     if not bad_recent.empty:         # CRITICAL, since = first such reading in the last 24 h
         alerts.append(_alert(unit_id, "reading outside 1-6 C", "event", "CRITICAL",
                              bad_recent["timestamp"].iloc[0],
                              f"{len(bad_recent)} reading(s) outside 1-6 C in the last 24 h "
                              f"(min {bad_recent['temp_c'].min():.1f}, "
                              f"max {bad_recent['temp_c'].max():.1f}).",
-                             "Move the blood now and quarantine it for review."))
+                             "Move the blood now and quarantine it for review.",
+                             bad_recent["timestamp"].iloc[-1]))
     elif summary["out_of_spec"]:     # earlier in the week; since = the latest such reading
         last_bad = pd.Timestamp(summary["out_of_spec"][-1]["timestamp"])
         alerts.append(_alert(unit_id, "excursion to review", "data", "MAINTENANCE", last_bad,
                              f"{len(summary['out_of_spec'])} reading(s) outside 1-6 C earlier "
                              f"this week, last at {_fmt(last_bad)}.",
-                             "Review that excursion: find the cause and decide on the blood."))
+                             "Review that excursion: find the cause and decide on the blood.", last_bad))
 
     # --- Sudden events in the last 24 h. since = first matching reading. ---
     off = last24[last24["power_on"] == 0]
     if not off.empty:
         alerts.append(_alert(unit_id, "power loss", "event", "MAINTENANCE", off["timestamp"].iloc[0],
                              f"Power was off for {len(off)} reading(s) in the last 24 h.",
-                             "Check the power supply and the temperature after the outage."))
+                             "Check the power supply and the temperature after the outage.",
+                             off["timestamp"].iloc[-1]))   # last_seen: latest power-off reading
     door = last24["door_open"].tolist()
     pairs = [i for i in range(1, len(door)) if door[i] == 1 and door[i - 1] == 1]
     if pairs:
         alerts.append(_alert(unit_id, "door open", "event", "MAINTENANCE",
                              last24["timestamp"].iloc[pairs[0] - 1],
                              "Door open on 2 or more consecutive readings (over 5 min) "
-                             "in the last 24 h.", "Check the door closes and the seal is tight."))
+                             "in the last 24 h.", "Check the door closes and the seal is tight.",
+                             last24["timestamp"].iloc[pairs[-1]]))   # last_seen: latest such reading
 
     # --- Service intervals. ---
     interval, days_since = _interval_alerts(unit_id, FRIDGE_INTERVALS, log, now, start)
@@ -259,10 +298,11 @@ def fridge_status(telemetry, unit_id, log, as_of=None):
                              near["timestamp"].iloc[0],
                              f"Reading at {near['temp_c'].iloc[0]:.1f} C (>= 5.5 or <= 1.5) while "
                              "a maintenance alert is active.",
-                             "Swap the unit and move the blood to a backup unit."))
+                             "Swap the unit and move the blood to a backup unit.",
+                             near["timestamp"].iloc[-1]))   # last_seen: latest near-limit reading
 
-    status = _finish(unit_id, alerts, log, now)
-    return {"unit_id": unit_id, "as_of": _fmt(now), "status": status, "alerts": alerts,
+    fields = _finish(unit_id, alerts, log, now)
+    return {"unit_id": unit_id, "as_of": _fmt(now), **fields, "alerts": alerts,
             "days_since": days_since, "summary": summary}
 
 
@@ -297,10 +337,11 @@ def generator_status(tests, gen_id, log, as_of):
         ]
         for name, bad, text in checks:
             if bad:
+                # last_seen = that test's date at 00:00 (the date itself)
                 alerts.append(_alert(gen_id, f"{name} ({test_type})", "event", "MAINTENANCE", when,
                                      f"{text} Latest {test_type} test, {_fmt(when)}.",
                                      f"Open a maintenance ticket; a passing {test_type} test "
-                                     "clears this."))
+                                     "clears this.", when))
 
     failed = g[g["started"] == 0]
     chart = summary["p_chart"]
@@ -310,7 +351,8 @@ def generator_status(tests, gen_id, log, as_of):
         since = in_month["test_date"].min() if not in_month.empty else pd.Timestamp(month + "-01")
         alerts.append(_alert(gen_id, "p-chart signal", "data", "MAINTENANCE", since,
                              f"Start-failure rate in {month} is above the p-chart limit.",
-                             "Investigate the cause of the failed starts."))
+                             "Investigate the cause of the failed starts.",
+                             failed["test_date"].max()))   # last_seen: latest failed start
 
     dt = summary["dead_time"]
     if dt["flag"]:
@@ -320,7 +362,8 @@ def generator_status(tests, gen_id, log, as_of):
                              f"Dead-time risk {dt['u'] * 100:.1f}% (95% upper "
                              f"{dt['u_upper'] * 100:.1f}%){caveat}. Fix the cause first; until "
                              "then test more often than weekly.",
-                             "Fix the cause of the failures; test more often than weekly."))
+                             "Fix the cause of the failures; test more often than weekly.",
+                             failed["test_date"].max()))   # last_seen: latest failed start
 
     last_test = {tt: rows["test_date"].max().normalize() for tt, rows in g.groupby("test_type")}
     first_known = g["test_date"].min()
@@ -328,25 +371,36 @@ def generator_status(tests, gen_id, log, as_of):
                                             first_known, extra_last=last_test)
     alerts += interval
 
-    status = _finish(gen_id, alerts, log, now)
-    return {"generator_id": gen_id, "as_of": _fmt(now), "status": status, "alerts": alerts,
+    fields = _finish(gen_id, alerts, log, now)
+    return {"generator_id": gen_id, "as_of": _fmt(now), **fields, "alerts": alerts,
             "days_since": days_since, "summary": summary}
 
 
 # ---------------------------------------------------------------------------
 # Attention list
 # ---------------------------------------------------------------------------
+def _rank(status):
+    """Sort rank of a status; MAINTENANCE COMPLETE ranks with OK."""
+    return TIERS.index(status) if status in TIERS else TIERS_SORT[status]
+
+
+def _row(unit_id, kind, r):
+    """One unit of the attention list: the fields of fridge_status / generator_status."""
+    keys = ("status", "alerts", "maintenance_complete_at", "resolved_by", "resolved_alerts")
+    return {"id": unit_id, "kind": kind, **{k: r[k] for k in keys}}
+
+
 def attention_list(telemetry, tests, log, as_of=None):
     """All units, sorted CRITICAL > URGENT > MAINTENANCE > WATCH > OK, then by id."""
     now = pd.Timestamp(as_of) if as_of is not None else pd.to_datetime(telemetry["timestamp"]).max()
     rows = []
     for unit in sorted(telemetry["unit_id"].unique()):
         r = fridge_status(telemetry, unit, log, now)
-        rows.append({"id": unit, "kind": "fridge", "status": r["status"], "alerts": r["alerts"]})
+        rows.append(_row(unit, "fridge", r))
     for gen in sorted(tests["generator_id"].unique()):
         r = generator_status(tests, gen, log, now)
-        rows.append({"id": gen, "kind": "generator", "status": r["status"], "alerts": r["alerts"]})
+        rows.append(_row(gen, "generator", r))
     for row in rows:
         row["tasks"] = [a["task"] for a in row["alerts"]]
-    rows.sort(key=lambda r: (-TIERS.index(r["status"]), r["id"]))
+    rows.sort(key=lambda r: (-_rank(r["status"]), r["id"]))
     return {"as_of": _fmt(now), "units": rows}

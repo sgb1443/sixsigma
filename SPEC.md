@@ -65,6 +65,8 @@ Fixed for every team:
 
 ## 6. Outputs
 - **What the user sees:**
+  - **Status bar (top of the page):** one box per unit in a fixed order, each with the status word: green = working (OK, WATCH, MAINTENANCE COMPLETE), yellow = MAINTENANCE, red = URGENT or CRITICAL (red fridges also say "move blood"). Clicking a box opens the unit.
+  - **Number tiles (detail panel)** are tinted with a word (✓ ok / ⚠ watch / ▲ out), using only the thresholds already in this SPEC: temperatures green inside 1.5-5.5 °C, yellow at or beyond 1.5 / 5.5 °C, red outside 1-6 °C; Cp, Cpk, Pp, Ppk green ≥ 1.33, yellow 1.00-1.33, red < 1.00; dead-time U green ≤ 1%, yellow above; T_max green if at least the test interval; failures N yellow if any. Sigma has no colour (no threshold on its own).
   - **Today's attention list:** every fridge and generator with status OK / WATCH / MAINTENANCE / URGENT / CRITICAL, most urgent first, each with a recommended task. How to read it: start at the top and work down. "Now" is the last timestamp in the data (adjustable as-of time).
   - **Fridge escalation:**
     - WATCH: exactly one beyond-limit hour in the last 24 h and no run of 8 (amber on the chart, not an action).
@@ -77,8 +79,9 @@ Fixed for every team:
   - **Maintenance checklist:** yes/no questions per unit; each "yes" is logged with today's date and clears its interval alert. The log downloads as a CSV.
   - **How alerts clear:**
     - Service-interval alerts are cleared by a person: a checklist "yes".
-    - Data alerts (I-MR signal, stuck probe, Ppk < 1.33, a reading outside 1-6 °C) clear only on their own, when the data returns to normal (for I-MR: no signal in the last 24 h). No one can dismiss them.
-    - Generator test alerts (failed start, slow start, low battery or fuel, unstable output) clear on the next passing test.
+    - **Maintenance complete (operator button):** every unit with alerts has a **Maintenance complete** button (on the attention list and in its detail panel). Pressing it logs who and when, and resolves every current alert of that unit whose evidence is no newer than that moment; the unit shows **MAINTENANCE COMPLETE** with "resolved by X at T".
+    - **Re-trigger:** if the data flags again after that moment (a new signal hour, out-of-spec or stuck reading, door or power event, a newer failing generator test, or newer data that still shows a whole-week problem or an overdue service), the alert comes back, marked "re-triggered after maintenance".
+    - Without "Maintenance complete", data alerts (I-MR signal, stuck probe, Ppk < 1.33, a reading outside 1-6 °C) clear on their own when the data returns to normal (for I-MR: no signal in the last 24 h), and generator test alerts clear on the next passing test.
     - **Acknowledge:** any alert has an Acknowledge button that logs who responded and when, and stops the 24 h unacknowledged-to-URGENT timer. It does not clear a data alert: it says "seen, on it", and the alert stays until the data recovers. Acknowledgements are kept in the log as an audit trail.
     - **Where the log lives:** the API stores nothing. The page keeps the maintenance log (checklist "yes" answers and acknowledgements) in the browser and sends it with each request; the log downloads and uploads as a CSV. The bundled `maintenance_log.csv` is the starting history.
   - Generator thresholds: slow start > 10 s, low battery < 12.2 V, low fuel < 50%, and output_stable = 0, judged on the latest test of each type.

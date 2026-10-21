@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 import './styles.css'
 
 // ---------- helpers (formatting and log handling only) ----------
-const ICON = { OK: '✔', WATCH: '◉', MAINTENANCE: '⚙', URGENT: '▲', CRITICAL: '⛔' }
+const ICON = { OK: '✔', WATCH: '◉', MAINTENANCE: '⚙', URGENT: '▲', CRITICAL: '⛔', 'MAINTENANCE COMPLETE': '✓' }
 const COLS = ['equipment_id', 'service_date', 'service_type', 'technician', 'notes']
 const KEY = 'bbm-local-log'
 const BLUE = '#2a78d6', RED = '#d03b3b', AMBER = '#fab219', MUTED = '#898781', GRID = '#e1e0d9', AXIS = '#c3c2b7', INK2 = '#52514e'
@@ -190,7 +190,21 @@ function PChart({ g }) {
 }
 
 // ---------- detail panels ----------
-function Tile({ label, value }) { return <div className="tile"><span>{label}</span><b>{value}</b></div> }
+// Tile colours use only thresholds already in SPEC (display rules, not statistics):
+// temperatures vs the 1-6 C spec and the 1.5 / 5.5 C near-limit rule; capability vs 1.33 and 1.00;
+// dead-time U vs the 1% flag line; T_max vs the test interval. No level = no colour.
+const LEVEL_WORD = { green: '✓ ok', yellow: '⚠ watch', red: '▲ out' }
+const tempLevel = (x) => (x == null ? null : x < 1 || x > 6 ? 'red' : x <= 1.5 || x >= 5.5 ? 'yellow' : 'green')
+const capLevel = (x) => (x == null ? null : x >= 1.33 ? 'green' : x >= 1 ? 'yellow' : 'red')
+const riskLevel = (u) => (u == null ? null : u <= 0.01 ? 'green' : 'yellow')
+function Tile({ label, value, level }) {
+  return (
+    <div className={'tile' + (level ? ' lvl-' + level : '')}>
+      <span>{label}</span><b>{value}</b>
+      {level && <small>{LEVEL_WORD[level]}</small>}
+    </div>
+  )
+}
 
 function FridgeDetail({ f, logged }) {
   const c = f.imr, k = f.capability, s = f.stuck_probe
@@ -200,14 +214,14 @@ function FridgeDetail({ f, logged }) {
       <FridgeChart f={f} />
       <h3>Numbers</h3>
       <div className="tiles">
-        <Tile label="center °C" value={num(c.center, 3)} />
+        <Tile label="center °C" value={num(c.center, 3)} level={tempLevel(c.center)} />
         <Tile label="sigma (MR-bar/1.128)" value={num(c.sigma, 3)} />
-        <Tile label="UCL °C" value={num(c.ucl, 3)} />
-        <Tile label="LCL °C" value={num(c.lcl, 3)} />
-        <Tile label="Cp (within)" value={num(k.cp)} />
-        <Tile label="Cpk (within)" value={num(k.cpk)} />
-        <Tile label="Pp (overall)" value={num(k.pp)} />
-        <Tile label="Ppk (overall)" value={num(k.ppk, 4)} />
+        <Tile label="UCL °C" value={num(c.ucl, 3)} level={tempLevel(c.ucl)} />
+        <Tile label="LCL °C" value={num(c.lcl, 3)} level={tempLevel(c.lcl)} />
+        <Tile label="Cp (within)" value={num(k.cp)} level={capLevel(k.cp)} />
+        <Tile label="Cpk (within)" value={num(k.cpk)} level={capLevel(k.cpk)} />
+        <Tile label="Pp (overall)" value={num(k.pp)} level={capLevel(k.pp)} />
+        <Tile label="Ppk (overall)" value={num(k.ppk, 4)} level={capLevel(k.ppk)} />
       </div>
       <p className="note">Ppk uses overall spread; the flag uses Ppk because 15-min readings are autocorrelated (Cpk looks optimistic). Flag when Ppk is below 1.33. {k.message}</p>
       <h3>Stuck probe</h3>
@@ -239,11 +253,12 @@ function GeneratorDetail({ g, logged }) {
       {d.u == null ? <p>{d.message}. {g.generator_id} has no failures, so there is no signal.</p> : (
         <div>
           <div className="tiles">
-            <Tile label="U (exact)" value={num(d.u, 4)} />
-            <Tile label="lambda*T/2 (approx)" value={num(d.approx, 4)} />
-            <Tile label="U at 95% upper lambda" value={num(d.u_upper, 4)} />
-            <Tile label="failures N" value={d.n_failures} />
-            <Tile label="T_max days (exact)" value={num(d.t_max_exact, 2)} />
+            <Tile label="U (exact)" value={num(d.u, 4)} level={riskLevel(d.u)} />
+            <Tile label="lambda*T/2 (approx)" value={num(d.approx, 4)} level={riskLevel(d.approx)} />
+            <Tile label="U at 95% upper lambda" value={num(d.u_upper, 4)} level={riskLevel(d.u_upper)} />
+            <Tile label="failures N" value={d.n_failures} level={d.n_failures > 0 ? 'yellow' : 'green'} />
+            <Tile label="T_max days (exact)" value={num(d.t_max_exact, 2)}
+              level={d.t_max_exact == null ? null : d.t_max_exact >= d.T ? 'green' : 'yellow'} />
           </div>
           <p>{d.flag ? 'Flag: U is above 1%. ' : 'U is within 1%. '}{d.caveat && d.caveat[0].toUpperCase() + d.caveat.slice(1) + '.'}</p>
           <p className="note">The longest test interval that keeps U at or under 1% is about {num(d.t_max_exact, 2)} days; the unit is tested every {d.T}.</p>
@@ -271,7 +286,7 @@ function Checklist({ kind, id, local, onYes }) {
   )
 }
 
-function Detail({ unit, local, onYes }) {
+function Detail({ unit, hasAlerts, local, onYes, onComplete }) {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
   const logged = local.filter((e) => e.equipment_id === unit.id).map((e) => e.service_type)
@@ -291,12 +306,46 @@ function Detail({ unit, local, onYes }) {
         ? <FridgeDetail f={shown} logged={logged} />
         : <GeneratorDetail g={shown} logged={logged} />)}
       <Checklist kind={unit.kind} id={unit.id} local={local} onYes={onYes} />
+      {hasAlerts && <div className="row"><CompleteButton id={unit.id} onComplete={onComplete} /></div>}
     </section>
   )
 }
 
 // ---------- attention list ----------
-function Chip({ status }) { return <span className={'chip ' + status}>{ICON[status]} {status}</span> }
+function Chip({ status }) { return <span className={'chip ' + status.replace(' ', '_')}>{ICON[status]} {status}</span> }
+
+// Status bar: one box per unit in a fixed order, so the board never jumps around.
+// green = working, yellow = maintenance needed, red = act now (fridges: move the blood)
+const LIGHT = { OK: 'green', WATCH: 'green', 'MAINTENANCE COMPLETE': 'green', MAINTENANCE: 'yellow', URGENT: 'red', CRITICAL: 'red' }
+function StatusBar({ att, onOpen }) {
+  const units = [...att.units].sort((a, b) => a.id.localeCompare(b.id))
+  return (
+    <section className="statusbar" aria-label="Status of every unit">
+      {units.map((u) => (
+        <button key={u.id} className={'light ' + LIGHT[u.status]} onClick={() => onOpen(u)} title={'Open ' + u.id}>
+          <b>{u.id}</b>
+          <span>{ICON[u.status]} {u.status}</span>
+          {LIGHT[u.status] === 'red' && u.kind === 'fridge' && <span className="act">move blood</span>}
+        </button>
+      ))}
+      <p className="sub legend">green = working · yellow = maintenance needed · red = urgent: act now (fridge: move blood to backup)</p>
+    </section>
+  )
+}
+
+// Two steps, because a completed unit moves down the list and a quick double click
+// would otherwise land on the next unit's button.
+function CompleteButton({ id, onComplete }) {
+  const [asking, setAsking] = useState(false)
+  if (!asking) return <button onClick={() => setAsking(true)}>Maintenance complete</button>
+  return (
+    <span className="confirm">
+      Mark all of {id}'s maintenance done?{' '}
+      <button onClick={() => { setAsking(false); onComplete(id) }}>Yes, complete</button>{' '}
+      <button onClick={() => setAsking(false)}>Cancel</button>
+    </span>
+  )
+}
 
 function AckText({ alert, local }) {
   const mine = local.filter((e) => e.service_type === 'acknowledge' && e.notes === alert.id).pop()
@@ -304,7 +353,7 @@ function AckText({ alert, local }) {
   return <span className="note"> acknowledged{mine ? ` by ${mine.technician} at ${when(mine.service_date)}` : ' (in the log)'}</span>
 }
 
-function Attention({ att, local, onAck, onOpen }) {
+function Attention({ att, local, onAck, onOpen, onComplete }) {
   return (
     <section className="panel">
       <h2>Today's attention list</h2>
@@ -314,12 +363,17 @@ function Attention({ att, local, onAck, onOpen }) {
             <Chip status={u.status} />
             <b>{u.id}</b> <span className="sub">{u.kind}</span>
             <button onClick={() => onOpen(u)}>Open detail</button>
+            {u.alerts.length > 0 && <CompleteButton id={u.id} onComplete={onComplete} />}
           </div>
+          {u.maintenance_complete_at && u.resolved_alerts.length > 0 && (
+            <div className="alert">Resolved by {u.resolved_by} at {when(u.maintenance_complete_at)}: {u.resolved_alerts.map((a) => a.id).join(', ')}</div>
+          )}
           {u.alerts.length === 0 && <div className="alert">No alerts.</div>}
           {u.alerts.map((a) => (
             <div className="alert" key={a.id}>
               <Chip status={a.tier} /> {a.message}
               {a.escalated && <span className="note"> (escalated from {a.base_tier})</span>}
+              {a.retriggered && <span className="note"> (re-triggered after maintenance)</span>}
               <div className="task">Task: {a.task}</div>
               <div className="row">
                 <button onClick={() => onAck(u.id, a.id)}>Acknowledge</button>
@@ -392,11 +446,13 @@ function App() {
     <main>
       <h1>Blood bank equipment monitor</h1>
       <p className="sub">As of {att ? when(att.as_of) : '...'} (the last reading in the data).</p>
-      <p className="sub">How to read this: start at the top and work down; the most urgent unit is first. Open a unit for its chart and numbers. Acknowledge says "seen, on it" and does not clear a data alert.</p>
+      <p className="sub">How to read this: start at the top and work down; the most urgent unit is first. Open a unit for its chart and numbers. Acknowledge says "seen, on it" and does not clear a data alert. Maintenance complete logs who and when and resolves the unit's current alerts; a new flag afterwards brings an alert back.</p>
       <div className="row"><label>Your name <input type="text" value={name} onChange={(e) => setName(e.target.value)} /></label></div>
       {err && <div className="err">{err}</div>}
-      {att ? <Attention att={att} local={local} onAck={(id, aid) => add(id, 'acknowledge', aid)} onOpen={setOpen} /> : !err && <p>Loading...</p>}
-      {open && <Detail unit={open} local={local} onYes={(id, t) => add(id, t, '')} />}
+      {att && <StatusBar att={att} onOpen={setOpen} />}
+      {att ? <Attention att={att} local={local} onAck={(id, aid) => add(id, 'acknowledge', aid)} onOpen={setOpen} onComplete={(id) => add(id, 'maintenance complete', '')} /> : !err && <p>Loading...</p>}
+      {open && <Detail unit={open} hasAlerts={!!att && att.units.some((u) => u.id === open.id && u.alerts.length > 0)} local={local}
+        onYes={(id, t) => add(id, t, '')} onComplete={(id) => add(id, 'maintenance complete', '')} />}
       <LogPanel local={local} bundled={bundled} onReplace={change} setErr={setErr} />
     </main>
   )

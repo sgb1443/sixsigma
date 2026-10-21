@@ -29,6 +29,13 @@ Each step is a real `POST /attention` with the entries the page would send. On t
 
 Real output of step 4: `MAINTENANCE [('control chart drift', 'MAINTENANCE', True)]`. After step 4 the full list is FR-03 URGENT, GEN-B URGENT, FR-02 MAINTENANCE, FR-04 MAINTENANCE, FR-01 WATCH, GEN-A OK.
 
+### Close the loop: press "Maintenance complete"
+On the page: after the fix, press **Maintenance complete** next to FR-02 (or in its detail panel). It logs one row, `FR-02, 2026-10-20T07:00:00, maintenance complete, Sam`, and resolves every FR-02 alert whose newest evidence (`last_seen`) is no newer than that moment. Real `POST /attention` output (no other entries):
+- Before: FR-02 **URGENT**; active `FR-02:coil cleaning overdue`, `FR-02:control chart drift`; resolved none.
+- After: FR-02 **MAINTENANCE COMPLETE**, `maintenance_complete_at` 2026-10-20T07:00:00, `resolved_by` Sam; active none; resolved `FR-02:control chart drift`, `FR-02:coil cleaning overdue`. The page shows a green check chip and "Resolved by Sam at 2026-10-20 07:00: ...".
+- Re-trigger: if the data flags again after that time (a new flagged hour, an out-of-spec or stuck reading, a door or power event, or a newer failing generator test), the alert comes back marked "re-triggered after maintenance".
+- GEN-B works the same: pressing it with the same row resolves all seven GEN-B alerts, including the failed start dated 2026-10-20.
+
 ## FR-03 (door-seal problem)
 `curl http://localhost:8000/fridges/FR-03`
 - Status **URGENT**. Alerts: "2 reading(s) outside 1-6 C earlier this week, last at 2026-10-16T14:45:00" (URGENT, unacknowledged for more than 24 h) and "Door open on 2 or more consecutive readings (over 5 min) in the last 24 h" (MAINTENANCE).

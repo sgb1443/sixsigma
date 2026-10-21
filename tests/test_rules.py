@@ -206,3 +206,82 @@ def test_attention_list_sorts_by_tier_then_id():
     out = rules.attention_list(both, make_tests(), log)
     order = [(u["id"], u["status"]) for u in out["units"]]
     assert order == [("FR-A", "WATCH"), ("FR-T", "OK"), ("GEN-T", "OK")]
+
+
+# ---------------------------------------------------------------------------
+# Maintenance complete button (SPEC.md section 6, "How alerts clear")
+# ---------------------------------------------------------------------------
+def press(equipment_id, when, who="Sam"):
+    """A 'maintenance complete' log row, as the page's button writes it."""
+    return {"equipment_id": equipment_id, "service_date": when,
+            "service_type": "maintenance complete", "technician": who, "notes": ""}
+
+
+def bundled():
+    """The real data/ files and the bundled log."""
+    from pathlib import Path
+    d = Path(__file__).resolve().parent.parent / "data"
+    return (pd.read_csv(d / "fridge_telemetry.csv"), pd.read_csv(d / "generator_tests.csv"),
+            pd.read_csv(d / "maintenance_log.csv", dtype=str, keep_default_na=False))
+
+
+def units(att):
+    return {u["id"]: u for u in att["units"]}
+
+
+def test_bundled_log_alone_resolves_nothing():
+    tele, tests, base = bundled()
+    for u in rules.attention_list(tele, tests, rules.make_log(base))["units"]:
+        assert u["resolved_alerts"] == [] and u["maintenance_complete_at"] is None
+        assert not any(a["retriggered"] for a in u["alerts"])
+
+
+def test_press_on_fr02_resolves_all_its_alerts():
+    tele, tests, base = bundled()
+    before = units(rules.attention_list(tele, tests, rules.make_log(base)))["FR-02"]
+    after = units(rules.attention_list(
+        tele, tests, rules.make_log(base, [press("FR-02", "2026-10-20T07:00:00")])))["FR-02"]
+    assert after["alerts"] == [] and after["status"] == "MAINTENANCE COMPLETE"
+    assert after["resolved_by"] == "Sam" and after["maintenance_complete_at"] == "2026-10-20T07:00:00"
+    assert sorted(a["id"] for a in after["resolved_alerts"]) == sorted(a["id"] for a in before["alerts"])
+
+
+def test_press_on_gen_b_resolves_including_todays_failed_start():
+    tele, tests, base = bundled()
+    before = units(rules.attention_list(tele, tests, rules.make_log(base)))["GEN-B"]
+    after = units(rules.attention_list(
+        tele, tests, rules.make_log(base, [press("GEN-B", "2026-10-20T07:00:00")])))["GEN-B"]
+    assert after["alerts"] == [] and after["status"] == "MAINTENANCE COMPLETE"
+    assert "GEN-B:failed start (weekly start)" in [a["id"] for a in after["resolved_alerts"]]
+    assert len(after["resolved_alerts"]) == len(before["alerts"])
+
+
+def test_complete_unit_sorts_with_ok_after_watch():
+    tele, tests, base = bundled()
+    att = rules.attention_list(tele, tests, rules.make_log(base, [press("FR-02", "2026-10-20T07:00:00")]))
+    order = [u["status"] for u in att["units"]]
+    assert order.index("WATCH") < order.index("MAINTENANCE COMPLETE")
+    assert "URGENT" not in order[order.index("MAINTENANCE COMPLETE"):]
+
+
+def test_fridge_flag_after_the_press_retriggers_and_before_it_does_not():
+    df = make_fridge()
+    hour_at(df, "2026-10-20 02:00", 5.0)             # flagged hour 02:00-03:00, last_seen 03:00
+    early = rules.make_log(good_log().drop(columns="when"), [press("FR-T", "2026-10-20T02:30:00")])
+    r = rules.fridge_status(df, "FR-T", early)
+    assert ids(r) == ["FR-T:control chart watch"] and r["alerts"][0]["retriggered"] is True
+    assert r["alerts"][0]["last_seen"] == "2026-10-20T03:00:00"
+    late = rules.make_log(good_log().drop(columns="when"), [press("FR-T", "2026-10-20T04:00:00")])
+    r2 = rules.fridge_status(df, "FR-T", late)
+    assert r2["alerts"] == [] and r2["status"] == "MAINTENANCE COMPLETE"
+    assert [a["id"] for a in r2["resolved_alerts"]] == ["FR-T:control chart watch"]
+
+
+def test_failing_generator_test_after_the_press_retriggers():
+    bad = make_tests({"started": 0, "seconds_to_start": float("nan")})     # failed start 2026-10-20
+    log = rules.make_log(gen_log().drop(columns="when"), [press("GEN-T", "2026-10-13T07:00:00")])
+    r = rules.generator_status(bad, "GEN-T", log, NOW)
+    assert "GEN-T:failed start (weekly start)" in ids(r)
+    assert all(a["retriggered"] for a in r["alerts"]) and r["status"] != "MAINTENANCE COMPLETE"
+    same_day = rules.make_log(gen_log().drop(columns="when"), [press("GEN-T", "2026-10-20T07:00:00")])
+    assert rules.generator_status(bad, "GEN-T", same_day, NOW)["alerts"] == []

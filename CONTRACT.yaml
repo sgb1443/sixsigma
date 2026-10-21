@@ -155,3 +155,20 @@ tasks:
       testme script and the H-03 tests both pass with no extra steps; git
       grep -i "api_key" finds no real key; the Devpost entry links the repo.
     result: ""
+
+  - id: H-09
+    title: Maintenance complete button - operator clears a unit's alerts, new flags re-trigger
+    points: "supports 15 - Tool Design: clear user and use case (the manager can close the loop on today's list)"
+    status: done
+    owner: "team 11 + implementer agent (claude code)"
+    started_at: "2026-10-20 22:30"
+    owns: ["app/rules.py", "app/main.py", "frontend/src/", "app/static/", "app/manifest.json", "tests/test_rules.py", "tests/test_api.py", "demo/README.md"]
+    notes: >
+      Agreed with the team 2026-10-20. SPEC section 6 "How alerts clear" is the
+      rule. Workflow only: app/qc.py and every statistic stay unchanged.
+    definition_of_done: >
+      python -m pytest tests passes, including rules tests for the
+      Maintenance complete button (alerts resolved) and re-trigger by evidence
+      newer than the completion time; in a browser, pressing Maintenance
+      complete on FR-02 clears its alerts and its tag reads MAINTENANCE COMPLETE.
+    result: "Maintenance complete button (with confirm) resolves a unit's alerts, newer flags re-trigger; plus red/yellow/green status bar and coloured number tiles; pytest 73 passed; browser-checked FR-02"
