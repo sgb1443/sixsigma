@@ -1,0 +1,18 @@
+equipment_id,service_date,service_type,technician,notes
+FR-01,2025-11-18,full service,MK,"Annual service, door gasket checked"
+FR-01,2026-02-10,coil cleaning,Ana,Condenser coils vacuumed
+FR-01,2026-05-20,probe calibration,Ana,Probe within 0.1 C of reference
+FR-01,2026-08-12,coil cleaning,Ana,Condenser coils vacuumed
+FR-02,2025-12-04,full service,MK,"Annual service, compressor oil ok"
+FR-02,2026-04-09,coil cleaning,Ben,Coils dusty
+FR-02,2026-06-15,probe calibration,Ben,Probe within tolerance
+FR-02,2026-07-10,coil cleaning,Ben,Last cleaning: now OVERDUE (over 90 days)
+FR-03,2026-01-22,full service,Ravi,Annual service
+FR-03,2026-04-30,probe calibration,Ravi,Probe within tolerance
+FR-03,2026-06-05,coil cleaning,Ravi,Coils clean enough
+FR-03,2026-09-01,coil cleaning,Ravi,Noted door gasket looks worn
+FR-04,2026-03-03,full service,Ana,Annual service
+FR-04,2026-05-05,probe calibration,MK,Probe within tolerance
+FR-04,2026-07-28,coil cleaning,MK,Condenser coils vacuumed
+GEN-A,2026-03-15,generator service,Ravi,"Oil, filter and battery check"
+GEN-B,2026-02-20,generator service,Ravi,"Oil, filter and battery check"

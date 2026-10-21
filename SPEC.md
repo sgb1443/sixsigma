@@ -65,8 +65,13 @@ Fixed for every team:
 
 ## 6. Outputs
 - **What the user sees:**
-  - **Today's attention list:** every fridge and generator with status OK / MAINTENANCE / URGENT / CRITICAL, most urgent first, each with a recommended task. How to read it: start at the top and work down.
-  - **Fridge escalation:** MAINTENANCE when drift is detected (an I-MR signal, beyond limits or run of 8, in the **last 24 hours**, though the chart shows the whole week; rising compressor duty; Ppk < 1.33), a stuck probe is detected, or a service interval is overdue (coils 90 d, probe calibration 180 d, full service 365 d). URGENT (swap unit, move blood to backup) if a maintenance alert is unresolved and temp reaches 5.5 °C or 1.5 °C, or the alert goes unacknowledged for 24 h. CRITICAL if any reading is outside 1-6 °C (move blood now, quarantine for review). Sudden events (power loss, door open > 5 min) alert immediately.
+  - **Today's attention list:** every fridge and generator with status OK / WATCH / MAINTENANCE / URGENT / CRITICAL, most urgent first, each with a recommended task. How to read it: start at the top and work down. "Now" is the last timestamp in the data (adjustable as-of time).
+  - **Fridge escalation:**
+    - WATCH: exactly one beyond-limit hour in the last 24 h and no run of 8 (amber on the chart, not an action).
+    - MAINTENANCE: drift (a run of 8, or 2 or more beyond-limit hours, in the last 24 h; the chart shows the whole week), rising compressor duty (latest-week mean duty at least 10 percentage points above the baseline week), Ppk < 1.33, a stuck probe, a reading outside 1-6 °C earlier in the latest week (review that excursion), or an overdue service interval (coils 90 d, probe calibration 180 d, full service 365 d).
+    - URGENT (swap unit, move blood to backup): a MAINTENANCE alert is active and a raw reading in the last 24 h reaches ≥ 5.5 °C or ≤ 1.5 °C, or any alert has been active for more than 24 h with no acknowledgement in the log since it started.
+    - CRITICAL (move blood now, quarantine for review): any raw reading in the last 24 h outside 1-6 °C.
+    - Sudden events in the last 24 h alert immediately at MAINTENANCE: power loss (power_on = 0) and door open > 5 min (door_open = 1 on 2 or more consecutive readings).
   - **Generator alerts:** a maintenance ticket if a test fails to start, takes > 10 s, or shows low battery, low fuel or unstable output; also on an out-of-control p-chart point, an overdue weekly start test (7 d), monthly load test (30 d) or generator service (365 d), or a dead-time risk U > 1%.
   - **Equipment detail:** the I-MR chart with out-of-control points in red and the 1-6 °C spec band shaded, plus Cpk (fridges) or the p-chart (generators), days since each service type, and recommended tasks.
   - **Maintenance checklist:** yes/no questions per unit; each "yes" is logged with today's date and clears its interval alert. The log downloads as a CSV.
@@ -75,6 +80,8 @@ Fixed for every team:
     - Data alerts (I-MR signal, stuck probe, Ppk < 1.33, a reading outside 1-6 °C) clear only on their own, when the data returns to normal (for I-MR: no signal in the last 24 h). No one can dismiss them.
     - Generator test alerts (failed start, slow start, low battery or fuel, unstable output) clear on the next passing test.
     - **Acknowledge:** any alert has an Acknowledge button that logs who responded and when, and stops the 24 h unacknowledged-to-URGENT timer. It does not clear a data alert: it says "seen, on it", and the alert stays until the data recovers. Acknowledgements are kept in the log as an audit trail.
+    - **Where the log lives:** the API stores nothing. The page keeps the maintenance log (checklist "yes" answers and acknowledgements) in the browser and sends it with each request; the log downloads and uploads as a CSV. The bundled `maintenance_log.csv` is the starting history.
+  - Generator thresholds: slow start > 10 s, low battery < 12.2 V, low fuel < 50%, and output_stable = 0, judged on the latest test of each type.
   - All thresholds and intervals are adjustable defaults.
 
 ## 7. Test datasets and codebook (rubric: demo 10, datasets 5, codebook 5)
