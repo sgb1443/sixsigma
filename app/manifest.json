@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "locale": "English_United States.1252",
+  "metadata": {
+    "appmode": "python-fastapi",
+    "entrypoint": "main:app"
+  },
+  "python": {
+    "version": "3.13.14",
+    "package_manager": {
+      "name": "pip",
+      "version": "26.1.2",
+      "package_file": "requirements.txt"
+    }
+  },
+  "environment": {
+    "python": {
+      "requires": "~=3.13.0"
+    }
+  },
+  "files": {
+    "requirements.txt": {
+      "checksum": "a38cfeee88eb95d5c2ea0a39ac9e30f2"
+    },
+    ".python-version": {
+      "checksum": "789ee353b44223a8ed8031aa190631dd"
+    },
+    "README.md": {
+      "checksum": "e0cb4ceda2b2ac8300528a5f0d4d7426"
+    },
+    "data/fridge_telemetry.csv": {
+      "checksum": "ab7bf616c2275f6677a21289bf03df19"
+    },
+    "data/generator_tests.csv": {
+      "checksum": "842342df23dac6b4e3f0d3808932d76d"
+    },
+    "data/maintenance_log.csv": {
+      "checksum": "fb75dfeb28c971c6b76206ca8a5cb8bd"
+    },
+    "deployme.sh": {
+      "checksum": "29783205c16ee33039e044f46e110bc3"
+    },
+    "main.py": {
+      "checksum": "4beb183a1f9e9fedd2772c569852813c"
+    },
+    "manifestme.sh": {
+      "checksum": "9c9ee7ef0921d84fc4df02a255c6a651"
+    },
+    "qc.py": {
+      "checksum": "9b1f41611565644b505d80670758d73e"
+    },
+    "rules.py": {
+      "checksum": "9673fef96159610f10d59dd957cb6acb"
+    },
+    "testme.sh": {
+      "checksum": "339f90c43b5fbdbc411f309bfc4a8794"
+    }
+  }
+}

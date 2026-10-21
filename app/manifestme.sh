@@ -12,9 +12,13 @@ cd "$SCRIPT_DIR"
 echo "Installing rsconnect-python (if needed)..."
 python -m pip install rsconnect-python
 
+# On Windows the rsconnect command is often not on PATH; call it through Python instead.
+rsconnect() { if type -P rsconnect >/dev/null 2>&1; then command rsconnect "$@"; else python -c "from rsconnect.main import cli; cli()" "$@"; fi; }
+
+
 echo "Writing manifest.json for FastAPI app..."
 # Entry point is main.py with ASGI object named 'app'. FastAPI is ASGI, so the mode is
 # `fastapi` (the older `api` mode is WSGI and fails on Connect).
-rsconnect write-manifest fastapi . --entrypoint main:app
+rsconnect write-manifest fastapi . --entrypoint main:app --overwrite
 
 echo "Done. manifest.json created in: $SCRIPT_DIR"

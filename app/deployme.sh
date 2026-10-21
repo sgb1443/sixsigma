@@ -11,6 +11,10 @@ cd "$SCRIPT_DIR"
 
 python -m pip install rsconnect-python
 
+# On Windows the rsconnect command is often not on PATH; call it through Python instead.
+rsconnect() { if type -P rsconnect >/dev/null 2>&1; then command rsconnect "$@"; else python -c "from rsconnect.main import cli; cli()" "$@"; fi; }
+
+
 # Optional: load CONNECT_SERVER and CONNECT_API_KEY from .env
 if [ -f ".env" ]; then
   # shellcheck disable=SC1091
