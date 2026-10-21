@@ -1,1 +1,2 @@
 # sixsigma
+# Sarah Grace Brown
