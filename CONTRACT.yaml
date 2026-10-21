@@ -22,15 +22,15 @@
 # Delete the paths you do not use.
 
 spec: SPEC.md
-updated: ""
+updated: "2026-10-20"
 
 tasks:
   - id: H-01
     title: Fill in every FILL IN line in SPEC.md
     points: "15 - Tool Design: scope matches a prompt (5), clear user and use case (5), minimal inputs (5)"
-    status: todo
-    owner: ""
-    started_at: ""
+    status: done
+    owner: "team 11 + implementer agent (claude code)"
+    started_at: "2026-10-20 20:56"
     owns: ["SPEC.md"]
     notes: >
       Do this together, out loud, right after kickoff. The prompts are in
@@ -40,20 +40,20 @@ tasks:
       grep -c "FILL IN[.,]" SPEC.md prints 0 (it counts only the blanks,
       not the instructions at the top), and every teammate can say the
       method sentence in SPEC section 4 without reading it.
-    result: ""
+    result: "SPEC.md filled (blood bank fridge I-MR + Cpk, generator p-chart); grep -c prints 0; known answers re-computed and match"
 
   - id: H-02
     title: Two or three test datasets plus a codebook
     points: "10 - Tool Documentation: 2-3 working test datasets (5), codebook and README for the data (5)"
-    status: todo
-    owner: ""
-    started_at: ""
+    status: done
+    owner: "team 11 + implementer agent (claude code)"
+    started_at: "2026-10-20 20:56"
     owns: ["data/"]
     definition_of_done: >
       ls data/*.csv lists 2 or 3 files (e.g. in control, planted shift, edge
       case), and data/README.md names every one of them and describes every
       column with units and how the data would be collected for real.
-    result: ""
+    result: "3 invented CSVs (4 fridges x 1344 readings, 2 generators x 32 tests, 17 service rows) + codebook; regenerate byte-identical with python data/make_data.py"
 
   - id: H-03
     title: Core QC statistic as one plain, tested function
