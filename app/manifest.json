@@ -29,13 +29,13 @@
       "checksum": "e0cb4ceda2b2ac8300528a5f0d4d7426"
     },
     "data/fridge_telemetry.csv": {
-      "checksum": "ab7bf616c2275f6677a21289bf03df19"
+      "checksum": "fb24368319f2fe8107a549c35893e2d9"
     },
     "data/generator_tests.csv": {
-      "checksum": "842342df23dac6b4e3f0d3808932d76d"
+      "checksum": "d851d1b8f1f80cee62de6f9cd143d37c"
     },
     "data/maintenance_log.csv": {
-      "checksum": "fb75dfeb28c971c6b76206ca8a5cb8bd"
+      "checksum": "e2db8f79802cd23f61c5cad79f58f9ec"
     },
     "deployme.sh": {
       "checksum": "29783205c16ee33039e044f46e110bc3"
@@ -47,7 +47,7 @@
       "checksum": "9c9ee7ef0921d84fc4df02a255c6a651"
     },
     "qc.py": {
-      "checksum": "9b1f41611565644b505d80670758d73e"
+      "checksum": "2ea1f650c329566cf85d09bd6444febe"
     },
     "rules.py": {
       "checksum": "9673fef96159610f10d59dd957cb6acb"
