@@ -20,7 +20,15 @@ def test_bundled_data_is_identical_to_data_folder():
 def test_health_and_root():
     assert client.get("/health").status_code == 200
     assert client.get("/health").json() == {"status": "ok"}
-    assert client.get("/").status_code == 200
+    assert client.get("/fridges/FR-01").json()["unit_id"] == "FR-01"
+
+
+def test_root_serves_the_built_page():
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert '<div id="root">' in r.text
+    assert client.get("/docs").status_code == 200
 
 
 def test_fridge_matches_qc_directly():

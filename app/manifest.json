@@ -41,16 +41,25 @@
       "checksum": "29783205c16ee33039e044f46e110bc3"
     },
     "main.py": {
-      "checksum": "4beb183a1f9e9fedd2772c569852813c"
+      "checksum": "05fcfdf7b1f1cc77ba178254aed776b0"
     },
     "manifestme.sh": {
       "checksum": "9c9ee7ef0921d84fc4df02a255c6a651"
     },
     "qc.py": {
-      "checksum": "2ea1f650c329566cf85d09bd6444febe"
+      "checksum": "670162ce0a50ff853625300b1376e27a"
     },
     "rules.py": {
       "checksum": "9673fef96159610f10d59dd957cb6acb"
+    },
+    "static/assets/index-Bw1HKVBf.js": {
+      "checksum": "80ed28fbae25368b336071212d924ff5"
+    },
+    "static/assets/index-By5UC0qq.css": {
+      "checksum": "442aa7ae3664b24983a584fa70437a31"
+    },
+    "static/index.html": {
+      "checksum": "646b35c9540c4c045912b72608b715b5"
     },
     "testme.sh": {
       "checksum": "339f90c43b5fbdbc411f309bfc4a8794"

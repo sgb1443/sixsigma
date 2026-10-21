@@ -166,6 +166,7 @@ def fridge_summary(df, unit_id):
     signals_24h = sum(flags[-24:])
     chart["n_baseline_hours"] = len(base_h)
     chart["hours"] = [t.strftime("%Y-%m-%dT%H:%M:%S") for t in latest_h["hour"]]
+    chart["values"] = [float(v) for v in latest_h["temp_c"]]  # the plotted hourly means
 
     raw = latest["temp_c"]
     bad = latest[(raw > USL) | (raw < LSL)]

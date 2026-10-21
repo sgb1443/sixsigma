@@ -91,16 +91,16 @@ tasks:
   - id: H-05
     title: Demonstration of the tool on every test dataset
     points: "10 - Tool Design: a clear demonstration of the tool, using test datasets"
-    status: todo
-    owner: ""
-    started_at: ""
-    owns: ["demo/", "app/frontend/"]
+    status: done
+    owner: "team 11 + implementer agent (claude code)"
+    started_at: "2026-10-20 22:05"
+    owns: ["demo/", "frontend/", "app/static/", "app/main.py", "app/manifest.json", "tests/test_api.py"]
     definition_of_done: >
       demo/README.md walks through each data/ CSV with the exact command or
       URL to run, the numbers or chart the tool shows, and a one-line "how to
       read this"; a teammate who did not write it follows it and gets the same
       numbers.
-    result: ""
+    result: "React page in app/static served at / by FastAPI; verified in a browser (FR-02 tiles = API, GEN-B dead time = API, ack + checklist clear alerts, 400px ok); demo/README.md for all 6 units; pytest 66 passed"
 
   - id: H-06
     title: Deploy to the course Posit Connect server

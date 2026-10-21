@@ -136,6 +136,18 @@ def test_167_hourly_points_each_week(df):
     for u in ["FR-01", "FR-02", "FR-03", "FR-04"]:
         i = fridge_summary(df, u)["imr"]
         assert i["n"] == 167 and i["n_baseline_hours"] == 167
+        assert len(i["values"]) == len(i["hours"]) == len(i["flags"]) == 167
+        assert abs(sum(i["values"]) / 167 - mean_of_hourly(df, u)) < 1e-9
+
+
+def mean_of_hourly(df, unit_id):
+    """Independent check: mean of the latest week's full-hour means, recomputed here."""
+    d = df[df["unit_id"] == unit_id].copy()
+    d["timestamp"] = pd.to_datetime(d["timestamp"])
+    latest = d[d["timestamp"] > d["timestamp"].max() - pd.Timedelta(days=7)]
+    g = latest.groupby(latest["timestamp"].dt.floor("h"))["temp_c"]
+    full = g.size().eq(4) & g.count().ge(3)
+    return g.mean()[full].mean()
 
 
 # ---------- the real data files ----------

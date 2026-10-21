@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 try:                       # works from the repo root (tests) ...
@@ -75,12 +76,6 @@ def run(func, *args):
         raise HTTPException(status_code=400, detail=str(err))
 
 
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    return {"message": "Blood bank monitor is running!", "docs": "/docs"}
-
-
 @app.get("/health")
 async def health():
     """Liveness check."""
@@ -122,3 +117,9 @@ def get_attention(as_of: Optional[str] = None):
 def post_attention(body: AttentionRequest):
     """Attention list on the bundled log plus the entries sent in the body."""
     return run(rules.attention_list, TELEMETRY, TESTS, build_log(body.log), body.as_of)
+
+
+# The built React page (frontend/ -> app/static/). Mounted LAST so every API route above wins.
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+if STATIC_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="page")
