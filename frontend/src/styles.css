@@ -77,3 +77,12 @@ td, th { border-bottom: 1px solid var(--grid); padding: 2px 8px; text-align: lef
 
 /* the move-blood action replaces Task complete on a move-blood alert: solid red so it stands out */
 button.move { background: #d03b3b; color: #fff; border: 2px solid #d03b3b; font-weight: 800; }
+
+/* Dashboard / User guide tabs and the guide's wide tables */
+.tabs { display: flex; gap: 6px; margin: 8px 0; }
+.tabs button { padding: 6px 14px; border: 1px solid var(--grid); border-radius: 6px; background: var(--surface); font: inherit; font-weight: 600; cursor: pointer; }
+.tabs button.on { border-color: #2a78d6; color: #2a78d6; }
+.guide table { font-size: 13px; margin: 6px 0; }
+.guide td, .guide th { vertical-align: top; padding: 6px 8px; }
+.guide li { margin: 3px 0; }
+.scroll-x { overflow-x: auto; }

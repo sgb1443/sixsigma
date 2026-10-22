@@ -25,6 +25,7 @@ bash app/testme.sh          # then open http://localhost:8000
 | Part | What it does |
 |---|---|
 | Test dataset | The "Test dataset:" dropdown at the top switches between five options (see [Test datasets](#test-datasets)); option 5 is **Upload your own data**. Each one keeps its own log in the browser. |
+| User guide | A **User guide** tab next to **Dashboard** explains the morning check, every status level with its criteria, all alert categories and how they clear, each button, the detail panel, the datasets and the statistics in brief. |
 | Status bar | One box per unit. Green = working (OK, WATCH, TASKS COMPLETE), yellow = MAINTENANCE, red = URGENT or CRITICAL (a CRITICAL fridge also says "move blood"). Click a box to pin that unit to the top of the list and open its detail there; click it again to undo. |
 | Attention list | Every unit, most urgent first, each with a recommended task. Start at the top and work down. "Now" is the last timestamp in the data. |
 | Open detail | Opens right under the unit's row (one at a time; the button then reads "Close detail"). Fridge: I-MR chart (red = beyond limits, amber = run of 8, shaded 1-6 °C band). Generator: monthly p-chart and the dead-time block. Plus days since each service and number tiles. Every chart has hover tooltips and a "Show as table" view. |

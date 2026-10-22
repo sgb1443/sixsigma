@@ -235,3 +235,16 @@ tasks:
       missing column, a bad record_type, unparseable values and under 14 days of
       readings. In a browser, option 5 uploads a sheet and the status bar shows its units.
     result: "one all_data.csv per scenario + template; option 5 upload (LRU, nothing stored); round trip exact for S1-S4; custom ids and edited data work; clear 422s; log upload removed; browser-checked: edited sheet -> Fridge-7 CRITICAL with Move blood; pytest 141 passed"
+
+  - id: H-14
+    title: User guide tab on the site (levels with criteria, alert categories, actions, datasets, statistics)
+    points: "10 - Tool Documentation: easy-to-follow documentation; 10 - clear demonstration"
+    status: done
+    owner: "team 11 + implementer agent (claude code)"
+    started_at: "2026-10-22 01:00"
+    owns: ["frontend/src/", "app/static/", "app/manifest.json", "README.md", "SPEC.md"]
+    definition_of_done: >
+      In a browser, a "User guide" tab next to "Dashboard" shows the guide; every
+      threshold it states matches SPEC section 6 and app/rules.py; switching back to
+      the dashboard keeps the selected dataset; works at 400 px wide.
+    result: "browser-checked: User guide tab with 7 sections and level chips; thresholds cross-checked against rules.py and qc.py; Dashboard keeps the dataset; 400 px: tables scroll in their box, no page overflow"

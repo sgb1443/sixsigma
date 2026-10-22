@@ -69,6 +69,7 @@ Fixed for every team:
 - **What the user sees:**
   - **Status bar (top of the page):** one box per unit in a fixed order, each with the status word: green = working (OK, WATCH, TASKS COMPLETE), yellow = MAINTENANCE, red = URGENT or CRITICAL (a CRITICAL fridge also says "move blood"). Clicking a box opens the unit.
   - **Number tiles (detail panel)** are tinted with a word (✓ ok / ⚠ watch / ▲ out), using only the thresholds already in this SPEC: temperatures green inside 1.5-5.5 °C, yellow at or beyond 1.5 / 5.5 °C, red outside 1-6 °C; Cp, Cpk, Pp, Ppk green ≥ 1.33, yellow 1.00-1.33, red < 1.00; dead-time U green ≤ 1%, yellow above; T_max green if at least the test interval; failures N yellow if any. Sigma has no colour (no threshold on its own).
+  - **User guide tab:** a "User guide" tab next to "Dashboard" on the page: the morning check in 5 steps, every level with its criteria (this section), all alert categories with trigger and how they clear, the buttons, reading the detail panel, the datasets and the statistics in brief. It must stay in step with this section.
   - **Display names:** the page shows MAINTENANCE as **ROUTINE MAINTENANCE**, URGENT as **URGENT MAINTENANCE** and CRITICAL as **CRITICAL FAILURE**; the API keeps the short codes.
   - **Today's attention list:** every fridge and generator with status OK / WATCH / MAINTENANCE / URGENT / CRITICAL, most urgent first, each with a recommended task. How to read it: start at the top and work down. "Now" is the last timestamp in the data (adjustable as-of time).
   - **Fridge escalation:**

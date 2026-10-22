@@ -506,6 +506,100 @@ function LogPanel({ local, bundled }) {
 }
 
 // ---------- App ----------
+// ---------- User guide (the on-site manual; every threshold here matches SPEC section 6 and app/rules.py) ----------
+function Level({ s }) { return <span className={'chip ' + s.replace(' ', '_')}>{ICON[s]} {label(s)}</span> }
+
+function Guide() {
+  return (
+    <section className="panel guide">
+      <h2>User guide</h2>
+      <p>This tool is the blood bank quality / facilities manager's <b>morning check</b> of the refrigerators and backup
+        generators: which units need maintenance today, and whether any blood must be moved right now. It reads three kinds
+        of records: fridge logger readings (every 15 min), generator test records, and the maintenance log.</p>
+
+      <h3>Your morning check in 5 steps</h3>
+      <ol>
+        <li>Look at the <b>status bar</b>: one box per unit. Green = working, yellow = routine maintenance, red = act now.</li>
+        <li>Any fridge saying <b>MOVE BLOOD</b> has a <b>CRITICAL FAILURE</b>: press its red <b>Move blood</b> button first.</li>
+        <li>Work down <b>Today's attention list</b> (most urgent first). Each alert says what is wrong and the task to do.</li>
+        <li>When a task is done, press <b>Task complete</b>; the alert becomes a green ✓ DONE row and the unit's colour is recalculated.</li>
+        <li>When an emptied fridge's tasks are all done, press <b>move blood back</b>. Download the log at the bottom to keep a record.</li>
+      </ol>
+
+      <h3>Status levels</h3>
+      <p className="sub">A unit takes the highest level among its open alerts. "Last 24 h" = the 24 hours before the newest reading.</p>
+      <div className="scroll-x"><table>
+        <thead><tr><th>Level</th><th>Colour</th><th>Fridge: when</th><th>Generator: when</th><th>What to do</th></tr></thead>
+        <tbody>
+          <tr><td><Level s="OK" /></td><td>green</td><td>No alerts.</td><td>No alerts.</td><td>Nothing.</td></tr>
+          <tr><td><Level s="WATCH" /></td><td>green</td><td>Exactly one hourly mean beyond the control limits in the last 24 h, and no run of 8.</td><td>(not used)</td><td>Look again at the next check.</td></tr>
+          <tr><td><Level s="MAINTENANCE" /></td><td>yellow</td><td>Any routine-maintenance alert (see categories below).</td><td>Any test, trend, overdue or dead-time alert (see below).</td><td>Do each task, then Task complete.</td></tr>
+          <tr><td><Level s="URGENT" /></td><td>red</td><td>A maintenance alert is open <b>and</b> a reading in the last 24 h is ≥ 5.5 °C or ≤ 1.5 °C (check the unit now, have a backup fridge ready); <b>or</b> any alert open more than 24 h without its task completed.</td><td>Any alert open more than 24 h without its task completed.</td><td>Act today. No blood move unless it becomes CRITICAL.</td></tr>
+          <tr><td><Level s="CRITICAL" /></td><td>red</td><td>Any reading outside <b>1-6 °C</b> in the last 24 h.</td><td>(not used)</td><td><b>Move the blood now</b> and quarantine it for review.</td></tr>
+          <tr><td><Level s="TASKS COMPLETE" /></td><td>green</td><td colSpan="2">At least one alert was cleared with Task complete or Move blood, and none is open.</td><td>Nothing (move blood back if the fridge is EMPTY).</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Alert categories</h3>
+      <div className="scroll-x"><table>
+        <thead><tr><th>Category</th><th>Alert</th><th>Triggered when</th><th>Level</th><th>Clears when</th></tr></thead>
+        <tbody>
+          <tr><td rowSpan="4">Temperature (data)</td><td>Control chart drift</td><td>A run of 8 hourly means on one side of the centre line, or 2+ hours beyond the control limits, in the last 24 h.</td><td>Routine</td><td>No signal in the last 24 h, or Task complete.</td></tr>
+          <tr><td>Control chart watch</td><td>Exactly one hour beyond the limits in the last 24 h.</td><td>Watch</td><td>Same as above.</td></tr>
+          <tr><td>Capability</td><td>Ppk below 1.33 over the last 7 days (the fridge may not hold 1-6 °C).</td><td>Routine</td><td>Ppk back above 1.33, or Task complete.</td></tr>
+          <tr><td>Stuck probe</td><td>12+ identical readings in a row (3 h), or no variation at all in 24 h.</td><td>Routine</td><td>Readings vary again, or Task complete.</td></tr>
+          <tr><td rowSpan="3">Temperature (spec 1-6 °C)</td><td>Reading outside 1-6 °C</td><td>Any reading outside 1-6 °C in the last 24 h.</td><td>Critical failure</td><td>Move blood (completes it).</td></tr>
+          <tr><td>Temperature near the limit</td><td>A reading ≥ 5.5 or ≤ 1.5 °C while a maintenance alert is open.</td><td>Urgent</td><td>Task complete.</td></tr>
+          <tr><td>Excursion to review</td><td>A reading outside 1-6 °C earlier in the latest week (not the last 24 h).</td><td>Routine</td><td>Task complete (review the cause and the blood).</td></tr>
+          <tr><td rowSpan="3">Events (last 24 h)</td><td>Power loss</td><td>The logger reports power off.</td><td>Routine</td><td>Task complete.</td></tr>
+          <tr><td>Door open</td><td>Door open on 2+ consecutive readings (over 5 min).</td><td>Routine</td><td>Task complete.</td></tr>
+          <tr><td>Compressor duty</td><td>Average duty this week 10+ points above the baseline week.</td><td>Routine</td><td>Task complete.</td></tr>
+          <tr><td>Service due</td><td>Overdue service</td><td>Fridge: coil cleaning over 90 days, probe calibration 180 days, full service 365 days. Generator: weekly start test 7 days, monthly load test 30 days, service 365 days.</td><td>Routine</td><td>Task complete or a Routine tasks tick (resets days-since to 0).</td></tr>
+          <tr><td rowSpan="3">Generator</td><td>Test result</td><td>Latest test: failed to start, start over 10 s, battery under 12.2 V, fuel under 50 %, or output unstable.</td><td>Routine</td><td>The next passing test, or Task complete.</td></tr>
+          <tr><td>p-chart signal</td><td>This month's start-failure rate above its control limit (any failure if the baseline months had none).</td><td>Routine</td><td>Task complete, or a normal month.</td></tr>
+          <tr><td>Dead-time risk</td><td>The chance the generator is down when a blackout hits, U, is above 1 %.</td><td>Routine</td><td>Task complete (fix the cause, test more often).</td></tr>
+        </tbody>
+      </table></div>
+      <p className="sub">Any alert open more than 24 h without its task completed becomes URGENT MAINTENANCE. A cleared alert comes back,
+        marked "re-triggered", if newer data shows the problem again. All thresholds are adjustable defaults.</p>
+
+      <h3>Buttons and what they do</h3>
+      <ul>
+        <li><b>Status bar box</b>: moves that unit to the top of the list and opens its detail; click again to undo.</li>
+        <li><b>Open detail / Close detail</b>: the chart, numbers, days since each service and the routine tasks, under the unit.</li>
+        <li><b>Task complete</b>: asks to confirm, logs who and when, clears that one alert.</li>
+        <li><b>Move blood</b> (red, CRITICAL FAILURE only): moves the blood to a green fridge, else a yellow one, else "a backup fridge" brought in; completes the alert. The fridge shows <b>EMPTY</b>, the receiving one <b>IN USE · also holding</b> it. An emptied fridge stays near the top until its blood is moved back.</li>
+        <li><b>All tasks complete: move blood back</b>: appears once the emptied fridge has no open alerts.</li>
+        <li><b>Routine tasks</b> (in the detail): tick a service when done; its days-since resets to 0 and the box greys out.</li>
+        <li><b>Download log CSV</b>: everything done on this page in this visit. Reopening the page starts fresh.</li>
+      </ul>
+
+      <h3>Reading the detail panel</h3>
+      <ul>
+        <li><b>Fridge chart</b>: hourly mean temperature for the latest week against limits from the week before. Red dot = beyond the limits, amber = part of a run of 8; the shaded band is the 1-6 °C storage spec.</li>
+        <li><b>Number boxes</b>: temperatures green inside 1.5-5.5 °C, yellow at or beyond 1.5 / 5.5 °C, red outside 1-6 °C; Cp, Cpk, Pp, Ppk green at 1.33 or more, yellow 1.00-1.33, red below 1.00; dead-time U green at 1 % or less, yellow above.</li>
+        <li><b>Generator chart</b>: start failures per month (p-chart); grey months had fewer than 3 tests. The dead-time block gives U, its 95 % upper value and the longest safe test interval.</li>
+      </ul>
+
+      <h3>Datasets</h3>
+      <ul>
+        <li><b>Scenario 1-3</b>: fixed test weeks (mixed problems, all healthy, blackout day). <b>Scenario 4</b>: a random week generated when you ask, with an answer key of what was planted. <b>Scenario 5</b>: upload your own data.</li>
+        <li><b>Download</b>: each dataset is one CSV sheet with a <code>record_type</code> column (reading, generator_test, service). Edit it in Excel and upload it back.</li>
+        <li><b>Upload</b>: one sheet in that format (download the template). Readings must cover at least 14 days (a baseline week and a latest week). Generator and service rows are optional; any unit names work. Nothing is stored on the server.</li>
+      </ul>
+
+      <h3>The statistics, in brief</h3>
+      <ul>
+        <li><b>I-MR control chart</b> on hourly means: centre and limits from the baseline week, sigma = MR-bar / 1.128, limits = centre ± 3 sigma.</li>
+        <li><b>Capability</b>: Cp, Cpk (within, sigma = MR-bar / 1.128) and Pp, Ppk (overall sd) against 1-6 °C; the flag uses Ppk because 15-min readings are correlated and make Cpk look too good.</li>
+        <li><b>p-chart</b> of monthly start failures, limits from earlier months; with about 4 tests a month the limits are rough, so every failed start is also flagged on its own.</li>
+        <li><b>Dead time</b>: U = 1 − (1 − e<sup>−λT</sup>) / (λT), λ = failures per day in service, T = test interval; with few failures it is a rough estimate, so the 95 % upper value is shown too.</li>
+      </ul>
+      <p className="sub">Full details, formulas and known-answer checks: README.md and the codebook data/README.md in the project repository.</p>
+    </section>
+  )
+}
+
 function App() {
   const [name, setName] = useState('manager')
   const [scenarios, setScenarios] = useState([])
@@ -515,6 +609,7 @@ function App() {
   const [bundled, setBundled] = useState(0)
   const [open, setOpen] = useState(null) // id of the unit whose detail is open under its row
   const [pinned, setPinned] = useState(null)
+  const [view, setView] = useState('dashboard') // 'dashboard' | 'guide' (the dashboard stays mounted, so nothing resets)
   const [err, setErr] = useState('')
   const [info, setInfo] = useState(null) // summary of the uploaded file
   const latest = useRef(0) // numbers the requests, so a late answer for an old scenario is ignored
@@ -581,6 +676,12 @@ function App() {
   return (
     <main>
       <h1>Blood bank equipment monitor</h1>
+      <nav className="tabs" aria-label="Page">
+        <button className={view === 'dashboard' ? 'on' : ''} aria-pressed={view === 'dashboard'} onClick={() => setView('dashboard')}>Dashboard</button>
+        <button className={view === 'guide' ? 'on' : ''} aria-pressed={view === 'guide'} onClick={() => setView('guide')}>User guide</button>
+      </nav>
+      {view === 'guide' && <Guide />}
+      <div hidden={view === 'guide'}>
       <p className="sub">As of {att ? when(att.as_of) : '...'} (the last reading in the data).</p>
       <p className="sub">How to read this: start at the top and work down; the most urgent unit is first. Open a unit for its chart and numbers. Task complete logs who and when and resolves that one alert (it turns into a green DONE row and the unit's colour is recalculated from what is left); a new flag afterwards brings it back. When every alert of a unit is done it shows TASKS COMPLETE.</p>
       {sc && (
@@ -628,6 +729,7 @@ function App() {
         onToggle={(u) => setOpen(open === u.id ? null : u.id)}
         detail={(u) => <Detail unit={u} query={qs(sc)} onYes={(id, t) => add(id, 'task complete', id + ': ' + t)} />} /> : !err && !(sc && sc.key === 'upload' && !UP.id) && <p>Loading...</p>}
       <LogPanel local={local} bundled={bundled} />
+      </div>
     </main>
   )
 }
