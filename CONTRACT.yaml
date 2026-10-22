@@ -125,10 +125,10 @@ tasks:
   - id: H-07
     title: README and function documentation
     points: "10 - Tool Documentation: excellent, easy-to-follow documentation"
-    status: todo
-    owner: ""
-    started_at: ""
-    owns: ["README.md", "app/README.md"]
+    status: done
+    owner: "team 11 + implementer agent (claude code)"
+    started_at: "2026-10-21 09:00"
+    owns: ["README.md", "app/README.md", "app/manifest.json"]
     notes: >
       Replace the hackathon README.md with your tool's README; the event
       pages stay in docs/. See demos/making_readmes/.
@@ -137,7 +137,7 @@ tasks:
       how each function or endpoint works, how to run it in one command, the
       live URL, and links demo/README.md. A teammate who did not write the
       code follows it from a fresh clone and it works.
-    result: ""
+    result: "README.md: what/for whom, quick start, page use, inputs, 5 statistics with formulas and known answers, limits, tiers, API, repo map, credits; fresh clone followed it: 73 passed, page 200, FR-01 UCL 4.303414"
 
   - id: H-08
     title: Reproducible public repo, submitted on Devpost
