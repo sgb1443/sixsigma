@@ -117,7 +117,7 @@ is one row. In the tool, each "yes" on the maintenance checklist adds a row with
 
 ## Scenarios
 
-The tool ships with four test scenarios. **The codebook above (every column, unit and allowed value) applies to every scenario**: each one has the same three files with the same columns and formats, the same 14-day window (2026-10-06T06:15:00 to 2026-10-20T06:00:00) and the same "now" (2026-10-20 06:00). Scenarios 1 to 3 are files made by `python data/make_data.py` (fixed seeds); scenario 1 is the main files above and never changes. Copies of all of them are in `app/data/` (a test checks they stay identical).
+The tool ships with four test scenarios (a fifth option, uploading your own sheet, is described under [Combined sheet](#combined-sheet-one-csv-with-everything)). **The codebook above (every column, unit and allowed value) applies to every scenario**: each one has the same three files with the same columns and formats, the same 14-day window (2026-10-06T06:15:00 to 2026-10-20T06:00:00) and the same "now" (2026-10-20 06:00). Scenarios 1 to 3 are files made by `python data/make_data.py` (fixed seeds); scenario 1 is the main files above and never changes. Copies of all of them are in `app/data/` (a test checks they stay identical).
 
 | # | Scenario (API key) | Folder | What is planted | What the tool should show |
 |---|---|---|---|---|
@@ -129,3 +129,48 @@ The tool ships with four test scenarios. **The codebook above (every column, uni
 **Scenario 2 and the method's false alarms.** The control chart judges the latest week against limits from the first week, using hourly means of correlated readings, so even a perfectly healthy fridge sometimes gets a WATCH or even a drift alert from noise alone (a run of 8 hourly means on one side of the centre line). We did not change the method. The scenario-2 file is the first of the candidate seeds we tried that came out all OK; with the same generator, a few of the seeds we tried gave one stray WATCH or MAINTENANCE. To keep the demonstration clean, the healthy fridges have no door openings in the last 24 h: the chart flags the hour of every door opening (it heats that hour by about 0.3 C). If a stray WATCH ever appears on healthy data, that is the method's false-alarm rate, not a planted problem.
 
 **Scenario 4: random data.** `random_scenario(seed)` in `app/simulate.py` builds the three tables from a random seed (the page picks one and shows it; "New random data" picks another). The same seed always gives the same data. Each fridge independently gets one behaviour: healthy, drifting warm (last 4 days, below 5.5 C), door-seal problem, stuck probe (last 24 h), or a power outage in the last 24 h (sometimes above 6 C). Each generator is healthy or has recent failed starts with low battery. About one in three seeds also has one overdue service. The API returns an **answer key** (plain-language list of what was planted per unit) with the attention list, and the page shows it, so you can compare it with the status bar. There are no fixed expected numbers. Known limit: the same false-alarm rate as above means a healthy fridge is sometimes flagged (tests/test_scenarios.py lists the seeds where that happened).
+
+## Combined sheet (one CSV with everything)
+
+Every dataset in the page's dropdown downloads as **one** CSV, and scenario 5 "Upload your own data" reads
+the same format. One row is one record; the first column, `record_type`, says which kind. A row fills
+only the columns of its own type; the others stay empty. The three files above map onto it:
+`fridge_telemetry.csv` -> `reading`, `generator_tests.csv` -> `generator_test`, `maintenance_log.csv` -> `service`.
+
+| Column | Type and unit | Used by | Notes |
+|---|---|---|---|
+| `record_type` | text | all | `reading`, `generator_test` or `service` |
+| `equipment_id` | text | all | fridge `unit_id`, `generator_id` or log `equipment_id`. Any name, no spaces or `:` (`FR-01`, `Cold-room-1`) |
+| `timestamp` | ISO date-time | all | reading time (`2026-10-20T06:00:00`), `test_date` or `service_date` (`2026-10-14`). Use one format per record type |
+| `temp_c` | number, °C | reading | blank = missing reading |
+| `door_open` | 0 or 1 | reading | |
+| `power_on` | 0 or 1 | reading | |
+| `compressor_duty` | number, % of the interval | reading | |
+| `test_type` | text | generator_test | `weekly start` or `monthly load` |
+| `started` | 0 or 1 | generator_test | required |
+| `seconds_to_start` | number, s | generator_test | blank when it did not start |
+| `battery_v` | number, V | generator_test | |
+| `fuel_pct` | number, % | generator_test | |
+| `output_stable` | 0 or 1 | generator_test | blank on weekly start tests |
+| `service_type` | text | service | e.g. `coil cleaning`, `probe calibration`, `full service`, `generator service` |
+| `technician` | text | service | optional |
+| `notes` | text | service | optional |
+
+Column order is exactly the table's. `GET /data/all_data.csv?scenario=mixed` (the page's download link)
+builds it from the three files; reading it back gives the same rows and numbers
+(`to_combined` / `from_combined` in `app/main.py`).
+
+**Template.** [`template_all_data.csv`](template_all_data.csv) (a byte-identical copy is in `app/data/`;
+the page's "Download CSV template" link) is the header plus two fridges with four readings each, one
+generator with two tests and two service rows. **It is a format example, not enough rows to analyse**:
+the analysis needs 14 days of 15-minute readings per fridge (a baseline week and a latest week), so
+uploading the template answers "FR-A has 0.0 days of readings; the method needs 14". To get a full-size
+example to edit, download any dataset from the dropdown: it is already in this format.
+
+**Upload rules.** Required: the columns `record_type`, `equipment_id`, `timestamp`, and for the types
+you use their columns (reading: `temp_c`, `door_open`, `power_on`, `compressor_duty`; generator_test:
+`test_type`, `started`, `battery_v`, `fuel_pct`; service: `service_type`). At least one fridge with
+at least 14 days of readings; generator and service rows are optional (no generators is fine). Unit names and
+counts are free. A bad file is refused with a message naming the row (spreadsheet row, the header is row 1)
+and column. A file can be up to 10 MB. The server keeps the parsed data in memory for the 8 most recent
+uploads and nothing else; after a restart the page sends the file again by itself.

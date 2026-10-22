@@ -26,7 +26,7 @@
       "checksum": "789ee353b44223a8ed8031aa190631dd"
     },
     "README.md": {
-      "checksum": "bd4334c61a62050fae6537a6af45aecb"
+      "checksum": "807714262b39d2192ec3251d8e108ebc"
     },
     "data/all_healthy/fridge_telemetry.csv": {
       "checksum": "db62f30eead275400bff591cd99990d1"
@@ -55,11 +55,14 @@
     "data/maintenance_log.csv": {
       "checksum": "e2db8f79802cd23f61c5cad79f58f9ec"
     },
+    "data/template_all_data.csv": {
+      "checksum": "38a7b6cbb21a98252916c8b5b5a7064f"
+    },
     "deployme.sh": {
       "checksum": "29783205c16ee33039e044f46e110bc3"
     },
     "main.py": {
-      "checksum": "29f6906becd49c4f9c1fa04a59ccda19"
+      "checksum": "666670877fbfdef26285668798efee9f"
     },
     "manifestme.sh": {
       "checksum": "9c9ee7ef0921d84fc4df02a255c6a651"
@@ -73,14 +76,14 @@
     "simulate.py": {
       "checksum": "ad2a91c2db9426a4f6ed07d41a5e5e85"
     },
-    "static/assets/index-8JU29yQk.js": {
-      "checksum": "44bb5e363c9f854e9607a65ceb9d6c31"
-    },
     "static/assets/index-CO4qDlgq.css": {
       "checksum": "9fc9f8ff67733dee13b771726367bae5"
     },
+    "static/assets/index-D_Ml2RgV.js": {
+      "checksum": "4d54eae99a2ce5f4ee351d4f4f51c3be"
+    },
     "static/index.html": {
-      "checksum": "4621fdb2a5f5057cdb53126fa60e2c75"
+      "checksum": "2de1bb57094446e04344f6355baeb391"
     },
     "testme.sh": {
       "checksum": "339f90c43b5fbdbc411f309bfc4a8794"

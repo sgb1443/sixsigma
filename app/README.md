@@ -16,15 +16,24 @@ bash app/testme.sh        # http://localhost:8000/docs
 
 - `GET /` : the dashboard page (built from `frontend/`, served from `app/static/`)
 - `GET /health`
-- `GET /scenarios` : the test scenarios (`key`, `label`, `description`): `mixed` (default), `healthy`, `blackout`, `random`
+- `GET /scenarios` : the test scenarios (`key`, `label`, `description`): `mixed` (default), `healthy`, `blackout`, `random`, `upload`
 - `GET /fridges/{unit_id}?as_of=` : `fridge_summary` plus `status`, `alerts`, `days_since`
 - `GET /generators/{gen_id}?as_of=` : `generator_summary` plus `status`, `alerts`, `days_since`
 - `GET /attention?as_of=` : all 6 units, most urgent first (bundled log); each unit has `days_since`, with the log entries counted
-- `POST /attention` : body `{"log": [entries], "as_of": optional, "scenario": optional, "seed": optional}`; entries have the columns of
+- `POST /attention` : body `{"log": [entries], "as_of": optional, "scenario": optional, "seed": optional, "upload_id": optional}`; entries have the columns of
   `maintenance_log.csv`, and `service_type` may be `task complete`, `blood moved` or `blood returned` (notes `FROM -> TO`; ignored by the rules), or the legacy `acknowledge`
   (still read for old logs; the page no longer has the button) or `task complete` (technician = who; see below). The old unit-level `maintenance complete` row is still read.
 - `GET /log` : the scenario's bundled maintenance log
 - `GET /data/{fridge_telemetry|generator_tests|maintenance_log}.csv?scenario=&seed=` : download that scenario's input CSV (bundled file byte for byte; scenario 4 as generated)
+- `GET /data/all_data.csv?scenario=&seed=&upload_id=` : the dataset as ONE combined CSV sheet (file name `<scenario>[_seed<n>]_all_data.csv`); columns in `../data/README.md#combined-sheet-one-csv-with-everything`
+- `GET /data/template.csv` : the template (header plus a few example rows of each record type; a format example, too few rows to analyse)
+- `POST /upload` : body = the combined CSV text itself (not multipart), up to 10 MB, e.g.
+  `curl --data-binary @sheet.csv -H "Content-Type: text/csv" http://localhost:8000/upload`. Answers
+  `{"id", "units": [{"id", "kind"}], "counts": {"reading", "generator_test", "service"}, "as_of"}`. Then pass
+  `scenario=upload&upload_id=<id>` to any data endpoint (POST `/attention` also accepts both in its body).
+  The parsed data is kept in memory only (the 8 most recently used uploads); the server keeps nothing else.
+  A bad file is 422 with a message naming the row and column; too big is 413; an unknown or expired
+  `upload_id` is 404 "upload not found (the server may have restarted): upload the file again".
 - Unknown id: 404. Bad log entry: 422. Bad `as_of`: 400.
 
 ## Scenarios

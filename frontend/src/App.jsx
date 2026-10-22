@@ -7,7 +7,7 @@ import './styles.css'
 // ---------- helpers (formatting and log handling only) ----------
 const ICON = { OK: '✔', WATCH: '◉', MAINTENANCE: '⚙', URGENT: '▲', CRITICAL: '⛔', 'TASKS COMPLETE': '✓' }
 const COLS = ['equipment_id', 'service_date', 'service_type', 'technician', 'notes']
-const LOG_KEY = 'bbm-local-log:' // + scenario key: one local log per scenario
+const LOG_KEY = 'bbm-local-log:' // + scenario key: one local log per scenario ('upload': the uploaded file's log)
 const SC_KEY = 'bbm-scenario', SEED_KEY = 'bbm-seed'
 const BLUE = '#2a78d6', RED = '#d03b3b', AMBER = '#fab219', MUTED = '#898781', GRID = '#e1e0d9', AXIS = '#c3c2b7', INK2 = '#52514e'
 const CHECKLIST = {
@@ -28,35 +28,33 @@ function toCsv(rows) {
   return [COLS.join(','), ...rows.map((r) => COLS.map((c) => q(r[c])).join(','))].join('\n') + '\n'
 }
 
-function parseCsv(text) { // small CSV reader: quotes, doubled quotes, commas and newlines inside quotes
-  const rows = []
-  let row = [], cell = '', inQ = false
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]
-    if (inQ) {
-      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++ }
-      else if (c === '"') inQ = false
-      else cell += c
-    } else if (c === '"') inQ = true
-    else if (c === ',') { row.push(cell); cell = '' }
-    else if (c === '\n' || c === '\r') {
-      if (c === '\r' && text[i + 1] === '\n') i++
-      row.push(cell); cell = ''
-      if (row.some((v) => v !== '')) rows.push(row)
-      row = []
-    } else cell += c
+async function post(url, options) {
+  const res = await fetch(url, options)
+  if (!res.ok) {
+    const body = await res.text()
+    let detail = body
+    try { detail = JSON.parse(body).detail || body } catch { /* not JSON: show the text */ }
+    const err = new Error(`${url}: ${res.status} ${body}`)
+    err.status = res.status; err.detail = String(detail)
+    throw err
   }
-  row.push(cell)
-  if (row.some((v) => v !== '')) rows.push(row)
-  const head = (rows.shift() || []).map((h) => h.trim())
-  if (!COLS.every((c) => head.includes(c))) throw new Error('CSV needs columns: ' + COLS.join(', '))
-  return rows.map((r) => Object.fromEntries(COLS.map((c) => [c, (r[head.indexOf(c)] ?? '').trim()])))
+  return res.json()
 }
 
+// The uploaded file lives only here, in memory: its text and the id the API gave it.
+const UP = { text: '', id: '' }
+const sendUpload = (text) => post('upload', { method: 'POST', headers: { 'Content-Type': 'text/csv' }, body: text })
+
+// Every request goes through call(). If the API no longer knows the upload id (the server restarted),
+// the file is sent again once and the request is repeated with the new id.
 async function call(url, options) {
-  const res = await fetch(url, options)
-  if (!res.ok) throw new Error(`${url}: ${res.status} ${await res.text()}`)
-  return res.json()
+  try {
+    return await post(url, options)
+  } catch (e) {
+    if (e.status !== 404 || !url.includes('upload_id=') || !UP.text) throw e
+    UP.id = (await sendUpload(UP.text)).id
+    return post(url.replace(/upload_id=[^&]*/, 'upload_id=' + UP.id), options)
+  }
 }
 
 function loadSaved(key) {
@@ -66,8 +64,8 @@ function store(k, v) { try { localStorage.setItem(k, v) } catch { /* storage may
 function recall(k) { try { return localStorage.getItem(k) } catch { return null } }
 
 const newSeed = () => Math.floor(Math.random() * 1000000)
-// the query string every data request carries: which scenario (and seed, for the random one)
-const qs = (sc) => 'scenario=' + sc.key + (sc.key === 'random' ? '&seed=' + sc.seed : '')
+// the query string every data request carries: which scenario (and seed for random, upload id for upload)
+const qs = (sc) => 'scenario=' + sc.key + (sc.key === 'random' ? '&seed=' + sc.seed : '') + (sc.key === 'upload' ? '&upload_id=' + UP.id : '')
 
 // ---------- chart pieces ----------
 function Axis({ W, H, m, y0, y1, fmt }) {
@@ -477,18 +475,12 @@ function AnswerKey({ planted }) {
   )
 }
 
-function LogPanel({ local, bundled, onReplace, setErr }) {
+function LogPanel({ local, bundled }) {
   const download = () => {
     const url = URL.createObjectURL(new Blob([toCsv(local)], { type: 'text/csv' }))
     const a = document.createElement('a')
     a.href = url; a.download = 'maintenance_log_local.csv'; a.click()
     URL.revokeObjectURL(url)
-  }
-  const upload = async (ev) => {
-    const file = ev.target.files[0]
-    if (!file) return
-    try { onReplace(parseCsv(await file.text())) } catch (e) { setErr(String(e.message)) }
-    ev.target.value = ''
   }
   return (
     <section className="panel">
@@ -496,7 +488,6 @@ function LogPanel({ local, bundled, onReplace, setErr }) {
       <p className="sub">The bundled history ({bundled} entries) is always included. Only the entries below are sent with each request.</p>
       <div className="row">
         <button onClick={download}>Download log CSV</button>
-        <label>Upload log CSV <input type="file" accept=".csv,text/csv" onChange={upload} /></label>
       </div>
       {local.length === 0 ? <p className="note">No new entries yet.</p> : (
         <div className="scroll"><table>
@@ -519,6 +510,7 @@ function App() {
   const [open, setOpen] = useState(null) // id of the unit whose detail is open under its row
   const [pinned, setPinned] = useState(null)
   const [err, setErr] = useState('')
+  const [info, setInfo] = useState(null) // summary of the uploaded file
   const latest = useRef(0) // numbers the requests, so a late answer for an old scenario is ignored
 
   const refresh = (log, s) => {
@@ -535,15 +527,30 @@ function App() {
     store(SC_KEY, key)
     if (s.seed != null) store(SEED_KEY, String(s.seed))
     setSc(s); setLocal(log); setOpen(null); setPinned(null); setAtt(null); setErr('')
+    if (key === 'upload' && !UP.id) { setBundled(0); return } // nothing uploaded yet: wait for a file
     refresh(log, s)
     call('log?' + qs(s)).then((l) => setBundled(l.length)).catch(() => {})
+  }
+  // A new file: send it, start with an empty log for it, show its units.
+  const onFile = async (ev) => {
+    const file = ev.target.files[0]
+    ev.target.value = ''
+    if (!file) return
+    try {
+      const text = await file.text()
+      const res = await sendUpload(text)
+      UP.text = text; UP.id = res.id
+      store(LOG_KEY + 'upload', '[]')
+      setInfo(res)
+      enter('upload', null, false)
+    } catch (e) { setErr(e.detail || String(e.message)) }
   }
   const change = (log) => { setLocal(log); refresh(log, sc) }
   useEffect(() => {
     call('scenarios').then((list) => {
       setScenarios(list)
       const saved = recall(SC_KEY), seed = recall(SEED_KEY)
-      enter(list.some((x) => x.key === saved) ? saved : 'mixed', seed ? Number(seed) : null, false)
+      enter(list.some((x) => x.key === saved && x.key !== 'upload') ? saved : 'mixed', seed ? Number(seed) : null, false)
     }).catch((e) => setErr(String(e.message)))
   }, [])
 
@@ -585,16 +592,25 @@ function App() {
               <button onClick={() => enter('random', null, true)}>New random data</button>
             </div>
           )}
-          <p className="sub">
-            Download this dataset (CSV):{' '}
-            {['fridge_telemetry', 'generator_tests', 'maintenance_log'].map((f, i) => (
-              <span key={f}>{i ? ' · ' : ''}<a href={`data/${f}.csv?${qs(sc)}`} download>{f}.csv</a></span>
-            ))}
-          </p>
+          {sc.key !== 'upload' && (
+            <p className="sub">
+              Download this dataset (one CSV sheet): <a href={`data/all_data.csv?${qs(sc)}`} download>all_data.csv</a>
+            </p>
+          )}
+          {sc.key === 'upload' && (
+            <div>
+              <p className="sub"><a href="data/template.csv" download>Download CSV template</a> (a format example; any dataset above downloads as a full-size example to edit)</p>
+              <div className="row"><label>Upload your CSV <input type="file" accept=".csv,text/csv" onChange={onFile} /></label></div>
+              {UP.id && info && (
+                <p className="sub">Found {info.units.length} units ({info.units.map((u) => u.id).join(', ')}) · {info.counts.reading} readings, {info.counts.generator_test} generator tests, {info.counts.service} service rows · as of {when(info.as_of)}</p>
+              )}
+            </div>
+          )}
         </section>
       )}
       <div className="row"><label>Your name <input type="text" value={name} onChange={(e) => setName(e.target.value)} /></label></div>
       {err && <div className="err">{err}</div>}
+      {sc && sc.key === 'upload' && !UP.id && !err && <p>Upload a CSV to see its units.</p>}
       {att && <StatusBar att={att} pinned={pinned} onPick={pick} away={away} />}
       {att && att.answer_key && <AnswerKey planted={att.answer_key} />}
       {att ? <Attention att={att} pinned={pinned} local={local} open={open}
@@ -603,8 +619,8 @@ function App() {
         onMove={moveBlood}
         onReturn={(back, holder) => add(back, 'blood returned', holder + ' -> ' + back)}
         onToggle={(u) => setOpen(open === u.id ? null : u.id)}
-        detail={(u) => <Detail unit={u} query={qs(sc)} onYes={(id, t) => add(id, 'task complete', id + ': ' + t)} />} /> : !err && <p>Loading...</p>}
-      <LogPanel local={local} bundled={bundled} onReplace={change} setErr={setErr} />
+        detail={(u) => <Detail unit={u} query={qs(sc)} onYes={(id, t) => add(id, 'task complete', id + ': ' + t)} />} /> : !err && !(sc && sc.key === 'upload' && !UP.id) && <p>Loading...</p>}
+      <LogPanel local={local} bundled={bundled} />
     </main>
   )
 }

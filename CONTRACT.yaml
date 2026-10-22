@@ -217,3 +217,21 @@ tasks:
       FR-02's blood; once FR-02's tasks are all complete a move-back button appears
       and both return to IN USE; the log records blood moved / blood returned.
     result: "browser-checked: red Move button replaces Task complete on the 2 move-blood alerts (API flag moves_blood); S3 FR-02 -> FR-03 completes both, EMPTY / IN USE holding, other tasks -> TASKS COMPLETE -> move back; no free fridge (S4 seed 1) -> to a backup fridge and back; pinned unit drops to the end once complete"
+
+  - id: H-13
+    title: One combined CSV sheet per dataset (download), plus option 5 Upload your own data with a template
+    points: "25 + 5 - working tool (judges can run their own data); minimal inputs (one file)"
+    status: done
+    owner: "team 11 + implementer agent (claude code)"
+    started_at: "2026-10-22 00:30"
+    owns: ["app/main.py", "app/rules.py", "app/simulate.py", "frontend/src/", "app/static/", "app/manifest.json", "tests/", "data/README.md", "data/template_all_data.csv", "app/data/template_all_data.csv", "README.md", "app/README.md", "demo/README.md"]
+    notes: >
+      app/qc.py frozen. The bundled per-file CSVs stay as they are (tests and
+      codebook use them); the combined sheet is built from them.
+    definition_of_done: >
+      python -m pytest tests passes, including: every scenario downloads as one
+      sheet that, uploaded back, reproduces that scenario's attention list exactly;
+      the template uploads and runs; custom unit names work; clear errors for a
+      missing column, a bad record_type, unparseable values and under 14 days of
+      readings. In a browser, option 5 uploads a sheet and the status bar shows its units.
+    result: "one all_data.csv per scenario + template; option 5 upload (LRU, nothing stored); round trip exact for S1-S4; custom ids and edited data work; clear 422s; log upload removed; browser-checked: edited sheet -> Fridge-7 CRITICAL with Move blood; pytest 141 passed"

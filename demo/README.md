@@ -77,7 +77,7 @@ Pick **Scenario 4: Random data**; the page shows "Seed N" and a "New random data
 - Tool: FR-01 **URGENT** (probe calibration overdue, plus a control chart drift alert on a healthy fridge: the method's false-alarm rate, see data/README.md), FR-02 **MAINTENANCE** (stuck probe, drift), FR-03 **MAINTENANCE** (door open), FR-04 **MAINTENANCE** (door open, drift), GEN-B **MAINTENANCE** (failed start, low battery, p-chart signal, dead-time risk), GEN-A OK.
 
 ## The log
-Everything you click is kept in the **Log** panel. **Download log CSV** saves it (`equipment_id,service_date,service_type,technician,notes`); **Upload log CSV** loads it back and replaces the entries. The server stores nothing.
+Everything you click is kept in the **Log** panel. **Download log CSV** saves it (`equipment_id,service_date,service_type,technician,notes`); the log is download-only. The server stores nothing.
 
 ## Moving blood (Scenario 3: Blackout day, checked in a browser)
 1. Pick **Scenario 3: Blackout day**. FR-02 is **CRITICAL** (red), FR-01 URGENT (red), FR-03 and FR-04 MAINTENANCE (yellow); every fridge box says **IN USE**.
@@ -87,4 +87,17 @@ Everything you click is kept in the **Log** panel. **Download log CSV** saves it
 4. **All tasks complete: move blood back from FR-03 to FR-02** appears. Press it: both are **IN USE** again; the log gets `blood returned | FR-03 -> FR-02`.
 
 ## Download a dataset
-Under the dataset dropdown, the three links download the selected scenario's input files, e.g. `http://localhost:8000/data/fridge_telemetry.csv?scenario=blackout`, or for Scenario 4 `...?scenario=random&seed=2026` (the generated week for that seed).
+Under the dataset dropdown, one link downloads the selected scenario as a single combined CSV sheet, e.g. `http://localhost:8000/data/all_data.csv?scenario=blackout`, or for Scenario 4 `...?scenario=random&seed=2026` (the generated week for that seed). The three original files are still at `/data/fridge_telemetry.csv` and so on.
+
+## Upload your own data (Scenario 5)
+1. Pick **Scenario 5: Upload your own data**. "Download CSV template" shows the format (too few rows to analyse). To start from real-sized data, download any dataset (for example Scenario 2: All healthy) and edit it.
+2. In the sheet, set `temp_c` to `7.0` on every FR-01 reading of the last day (2026-10-19T06:15 on), save, and choose the file under "Upload your CSV".
+3. The page shows the units it found and runs the same rules. Real TestClient output (Scenario 2 sheet, uploaded, then edited and uploaded again):
+```
+rows per type: {'reading': 5376, 'generator_test': 64, 'service': 17}
+before: {'FR-01': 'OK', 'FR-02': 'OK', 'FR-03': 'OK', 'FR-04': 'OK', 'GEN-A': 'OK', 'GEN-B': 'OK'}
+after 7.0 C: {'FR-01': 'CRITICAL', 'FR-02': 'OK', 'FR-03': 'OK', 'FR-04': 'OK', 'GEN-A': 'OK', 'GEN-B': 'OK'}
+FR-01 alert: 96 reading(s) outside 1-6 C in the last 24 h (min 7.0, max 7.0).
+```
+4. FR-01 is red with a "Move FR-01's blood" button, as in any scenario. Errors name the row and column, for example `row 8: temp_c 'abc' is not a number` or, for the template, `FR-A has 0.0 days of readings; the method needs 14: a baseline week and a latest week`.
+The file stays in your browser tab and in the server's memory only; its log is kept separately from the other scenarios and is cleared when you upload a new file.

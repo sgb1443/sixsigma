@@ -23,9 +23,9 @@ def alert_names(unit):
 
 
 # ---------- scenario list and errors ----------
-def test_scenarios_lists_four_with_the_default_first():
+def test_scenarios_lists_five_with_the_default_first():
     r = client.get("/scenarios").json()
-    assert [s["key"] for s in r] == ["mixed", "healthy", "blackout", "random"]
+    assert [s["key"] for s in r] == ["mixed", "healthy", "blackout", "random", "upload"]
     assert r[0]["label"] == "Scenario 1: Mixed problems"
     assert r[3]["label"] == "Scenario 4: Random data"
     assert all(s["description"] for s in r)
