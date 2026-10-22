@@ -348,9 +348,8 @@ def fridge_status(telemetry, unit_id, log, as_of=None):
                              near["timestamp"].iloc[0],
                              f"Reading at {near['temp_c'].iloc[0]:.1f} C (>= 5.5 or <= 1.5) while "
                              "a maintenance alert is active.",
-                             "Swap the unit and move the blood to a backup unit.",
+                             "Check the unit now and have a backup fridge ready: a reading is close to the 1-6 C limit.",
                              near["timestamp"].iloc[-1]))   # last_seen: latest near-limit reading
-        alerts[-1]["moves_blood"] = True
 
     fields = _finish(unit_id, alerts, log, now)
     return {"unit_id": unit_id, "as_of": _fmt(now), **fields, "alerts": alerts,
