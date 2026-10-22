@@ -216,7 +216,7 @@ tasks:
       yellow fridge; after confirming, FR-02 shows EMPTY and the backup IN USE holding
       FR-02's blood; once FR-02's tasks are all complete a move-back button appears
       and both return to IN USE; the log records blood moved / blood returned.
-    result: "browser-checked: red Move button replaces Task complete on the 2 move-blood alerts (API flag moves_blood); S3 FR-02 -> FR-03 completes both, EMPTY / IN USE holding, other tasks -> TASKS COMPLETE -> move back; no free fridge (S4 seed 1) -> to a backup fridge and back; pinned unit drops to the end once complete"
+    result: "browser-checked: red Move button replaces Task complete on the 2 move-blood alerts (API flag moves_blood); S3 FR-02 -> FR-03 completes both, EMPTY / IN USE holding, other tasks -> TASKS COMPLETE -> move back; no free fridge (S4 seed 1) -> to a backup fridge and back; pinned unit drops to the end once complete; EMPTY fridge stays on top until moved back (S3 FR-01 checked); manager log in memory only, reset on reopen (checked); page labels ROUTINE MAINTENANCE / URGENT MAINTENANCE / CRITICAL FAILURE (checked)"
 
   - id: H-13
     title: One combined CSV sheet per dataset (download), plus option 5 Upload your own data with a template

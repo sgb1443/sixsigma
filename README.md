@@ -35,7 +35,7 @@ bash app/testme.sh          # then open http://localhost:8000
 | Upload your own data | Option 5: "Download CSV template" and an "Upload your CSV" button. Send one combined sheet (any dataset's download, edited, works); the page shows the units it found, rows per type and the as-of time, then runs the same statistics and rules on it. The file stays in this browser tab and in server memory only. An error (a missing column, a bad value, under 14 days of readings) names the row and column. |
 | Task complete | One button per alert, next to its task. After a confirm ("Done: <task>? Yes / Cancel") it logs who and when and resolves that one alert (if its evidence is no newer than that moment). On an overdue-service alert it also counts as that service done today (days since = 0). When every alert of a unit is done, the unit shows TASKS COMPLETE. If the data flags again afterwards, the alert returns marked "re-triggered after a task was completed". |
 | Routine tasks | Tick-boxes per unit; each tick is logged as a task complete ("FR-03: coil cleaning"), counts as that service done today, and clears its overdue alert. |
-| Log | Download the entries made on this page as CSV. The log is kept **per browser** (the API stores nothing). The service rows of an uploaded sheet are the maintenance history; the log panel is separate. |
+| Log | Download the entries made on this page as CSV. The log is kept **for this visit only**: reopening the page resets every click (the API stores nothing), so download it to keep a record. The service rows of an uploaded sheet are the maintenance history; the log panel is separate. |
 
 Walkthrough of every test unit with real output: [demo/README.md](demo/README.md).
 
@@ -96,6 +96,8 @@ Known answers: λ = 0.001, T = 30 gives λT/2 = 0.015, U = 0.014851. μ_U is 3.6
 - All data is invented. Thresholds and intervals are adjustable defaults.
 
 ## Alert tiers
+
+On the page, MAINTENANCE reads **ROUTINE MAINTENANCE** (yellow), URGENT reads **URGENT MAINTENANCE** (red) and CRITICAL reads **CRITICAL FAILURE** (red); the API and the table below use the short codes.
 
 | Tier | When |
 |---|---|

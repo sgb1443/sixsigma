@@ -6,8 +6,13 @@ import './styles.css'
 
 // ---------- helpers (formatting and log handling only) ----------
 const ICON = { OK: '✔', WATCH: '◉', MAINTENANCE: '⚙', URGENT: '▲', CRITICAL: '⛔', 'TASKS COMPLETE': '✓' }
+// Words shown for the API's status codes (the codes themselves stay short in the API and tests)
+const LABEL = { MAINTENANCE: 'ROUTINE MAINTENANCE', URGENT: 'URGENT MAINTENANCE', CRITICAL: 'CRITICAL FAILURE' }
+const label = (status) => LABEL[status] || status
 const COLS = ['equipment_id', 'service_date', 'service_type', 'technician', 'notes']
-const LOG_KEY = 'bbm-local-log:' // + scenario key: one local log per scenario ('upload': the uploaded file's log)
+// The manager's clicks, one log per scenario ('upload': the uploaded file's log). Kept in memory only, so
+// reopening the page starts fresh; Download log CSV keeps a record.
+const LOGS = {}
 const SC_KEY = 'bbm-scenario', SEED_KEY = 'bbm-seed'
 const BLUE = '#2a78d6', RED = '#d03b3b', AMBER = '#fab219', MUTED = '#898781', GRID = '#e1e0d9', AXIS = '#c3c2b7', INK2 = '#52514e'
 const CHECKLIST = {
@@ -57,9 +62,7 @@ async function call(url, options) {
   }
 }
 
-function loadSaved(key) {
-  try { return JSON.parse(localStorage.getItem(LOG_KEY + key)) || [] } catch { return [] }
-}
+function loadSaved(key) { return LOGS[key] || [] }
 function store(k, v) { try { localStorage.setItem(k, v) } catch { /* storage may be blocked: fine */ } }
 function recall(k) { try { return localStorage.getItem(k) } catch { return null } }
 
@@ -314,10 +317,10 @@ function Detail({ unit, query, onYes }) {
 }
 
 // ---------- attention list ----------
-function Chip({ status }) { return <span className={'chip ' + status.replace(' ', '_')}>{ICON[status]} {status}</span> }
+function Chip({ status }) { return <span className={'chip ' + status.replace(' ', '_')}>{ICON[status]} {label(status)}</span> }
 
 // Status bar: one box per unit in a fixed order, so the board never jumps around.
-// green = working, yellow = maintenance needed, red = act now (fridges: move the blood)
+// green = working, yellow = routine maintenance, red = urgent maintenance / critical (move blood where an alert says so)
 const LIGHT = { OK: 'green', WATCH: 'green', 'TASKS COMPLETE': 'green', MAINTENANCE: 'yellow', URGENT: 'red', CRITICAL: 'red' }
 // Where each fridge's blood is, from the log: "blood moved" (notes "FR-02 -> FR-04") and
 // "blood returned" (notes "FR-04 -> FR-02"). Returns {source fridge: fridge now holding its blood}.
@@ -363,7 +366,7 @@ function MoveButton({ u, att, away, onMove }) {
   if (!asking) return (
     <>
       <button className="move" onClick={() => setAsking(true)}>Move {u.id}'s blood to {where}</button>{' '}
-      <span className="note">{free ? `(${to} is ${free.status})` : '(no green or yellow fridge is free: bring in a backup fridge)'}</span>
+      <span className="note">{free ? `(${to} is ${label(free.status)})` : '(no green or yellow fridge is free: bring in a backup fridge)'}</span>
     </>
   )
   return (
@@ -390,12 +393,12 @@ function StatusBar({ att, pinned, onPick, away }) {
         <button key={u.id} className={'light ' + LIGHT[u.status] + (pinned === u.id ? ' picked' : '')} onClick={() => onPick(u)}
           aria-pressed={pinned === u.id} title={pinned === u.id ? 'Unpin ' + u.id : 'Show ' + u.id + ' first'}>
           <b>{u.id}</b>
-          <span>{ICON[u.status]} {u.status}</span>
+          <span>{ICON[u.status]} {label(u.status)}</span>
           {needsMove(u, away) && <span className="act">move blood</span>}
           <Occupancy u={u} away={away} />
         </button>
       ))}
-      <p className="sub legend">green = working · yellow = maintenance needed · red = urgent: act now (fridge: move blood to backup)</p>
+      <p className="sub legend">green = working · yellow = routine maintenance · red = urgent maintenance or critical failure: act now (move blood where shown)</p>
     </section>
   )
 }
@@ -428,8 +431,11 @@ function DoneRow({ alert, local }) {
 function Attention({ att, pinned, local, onTask, open, onToggle, detail, away, onMove, onReturn }) {
   // a unit picked in the status bar goes first; the rest keep the API's most-urgent-first order
   // ... but a unit with nothing left to do drops back to its place at the end (TASKS COMPLETE / OK sort last)
-  const pin = att.units.find((u) => u.id === pinned && u.alerts.length > 0)?.id
-  const units = pin ? [...att.units].sort((a, b) => (b.id === pin) - (a.id === pin)) : att.units
+  // An EMPTY fridge (its blood moved out) stays near the top until the blood is moved back.
+  const pending = (u) => u.alerts.length > 0 || u.id in away
+  const pin = att.units.find((u) => u.id === pinned && pending(u))?.id
+  const rank = (u) => (u.id === pin ? 0 : u.id in away ? 1 : 2)
+  const units = [...att.units].sort((a, b) => rank(a) - rank(b))   // stable: API order within each rank
   return (
     <section className="panel" id="attention">
       <h2>Today's attention list</h2>
@@ -447,7 +453,7 @@ function Attention({ att, pinned, local, onTask, open, onToggle, detail, away, o
           {u.alerts.map((a) => (
             <div className="alert" key={a.id}>
               <Chip status={a.tier} /> {a.message}
-              {a.escalated && <span className="note"> (escalated from {a.base_tier})</span>}
+              {a.escalated && <span className="note"> (escalated from {label(a.base_tier)})</span>}
               {a.retriggered && <span className="note"> (re-triggered after a task was completed)</span>}
               <div className="task">Task: {a.task}</div>
               <div className="row">
@@ -514,7 +520,7 @@ function App() {
   const latest = useRef(0) // numbers the requests, so a late answer for an old scenario is ignored
 
   const refresh = (log, s) => {
-    store(LOG_KEY + s.key, JSON.stringify(log))
+    LOGS[s.key] = log
     const id = ++latest.current
     call('attention?' + qs(s), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ log }) })
       .then((a) => { if (id === latest.current) { setAtt(a); setErr('') } })
@@ -540,13 +546,14 @@ function App() {
       const text = await file.text()
       const res = await sendUpload(text)
       UP.text = text; UP.id = res.id
-      store(LOG_KEY + 'upload', '[]')
+      LOGS.upload = []
       setInfo(res)
       enter('upload', null, false)
     } catch (e) { setErr(e.detail || String(e.message)) }
   }
   const change = (log) => { setLocal(log); refresh(log, sc) }
   useEffect(() => {
+    try { Object.keys(localStorage).filter((k) => k.startsWith('bbm-local-log')).forEach((k) => localStorage.removeItem(k)) } catch { /* fine */ }
     call('scenarios').then((list) => {
       setScenarios(list)
       const saved = recall(SC_KEY), seed = recall(SEED_KEY)
