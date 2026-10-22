@@ -12,3 +12,6 @@ rsconnect/
 .opencode/model-ladder-state.json
 
 .claude/settings.local.json
+
+# Playwright MCP test-browser screenshots and logs
+.playwright-mcp/

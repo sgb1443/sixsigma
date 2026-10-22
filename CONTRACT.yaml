@@ -142,9 +142,9 @@ tasks:
   - id: H-08
     title: Reproducible public repo, submitted on Devpost
     points: "5 - Tool Documentation: fully reproducible code, posted publicly to GitHub"
-    status: todo
-    owner: ""
-    started_at: ""
+    status: in_progress
+    owner: "team 11 + implementer agent (claude code)"
+    started_at: "2026-10-21 23:45"
     owns: [".gitignore"]
     notes: >
       Make this clone your own public repo early (a new GitHub repo, then
