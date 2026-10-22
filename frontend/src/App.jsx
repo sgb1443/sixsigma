@@ -275,8 +275,12 @@ function GeneratorDetail({ g }) {
   )
 }
 
-function Checklist({ unit, onYes }) {
-  // a box is ticked (and greyed) when the API says that service was done today (0 days since)
+function Checklist({ unit, onYes, local }) {
+  // a box is ticked (and greyed) when the API says that service was done today (0 days since);
+  // "who" comes from this visit's log: a routine tick or a Task complete on that service's overdue alert
+  const who = (t) => local.filter((e) => e.equipment_id === unit.id && e.service_type === 'task complete' &&
+    (e.notes === `${unit.id}: ${t}` || e.notes.startsWith(`${unit.id}:${t} overdue`))).pop()?.technician
+  const days = (n) => (n == null ? 'no record yet' : n === 1 ? '1 day since last' : `${n} days since last`)
   return (
     <div>
       <h3>Routine tasks (tick when done)</h3>
@@ -284,8 +288,8 @@ function Checklist({ unit, onYes }) {
         const done = unit.days_since[t] === 0
         return (
           <div className="row" key={t}>
-            <label><input type="checkbox" checked={done} disabled={done} onChange={() => onYes(unit.id, t)} /> {t}: done, yes</label>
-            {done && <span className="note">logged</span>}
+            <label><input type="checkbox" checked={done} disabled={done} onChange={() => onYes(unit.id, t)} /> {t}</label>
+            <span className="note">{done ? `done today${who(t) ? ' by ' + who(t) : ''}` : days(unit.days_since[t])}</span>
           </div>
         )
       })}
@@ -294,7 +298,7 @@ function Checklist({ unit, onYes }) {
 }
 
 // Shown inline under its unit in the attention list.
-function Detail({ unit, query, onYes }) {
+function Detail({ unit, query, onYes, local }) {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
   useEffect(() => {
@@ -311,7 +315,7 @@ function Detail({ unit, query, onYes }) {
       {!shown && !err && <p>Loading...</p>}
       {shown && (unit.kind === 'fridge' ? <FridgeDetail f={shown} /> : <GeneratorDetail g={shown} />)}
       <DaysSince d={unit.days_since} />
-      <Checklist unit={unit} onYes={onYes} />
+      <Checklist unit={unit} onYes={onYes} local={local} />
     </section>
   )
 }
@@ -727,7 +731,7 @@ function App() {
         onMove={moveBlood}
         onReturn={(back, holder) => add(back, 'blood returned', holder + ' -> ' + back)}
         onToggle={(u) => setOpen(open === u.id ? null : u.id)}
-        detail={(u) => <Detail unit={u} query={qs(sc)} onYes={(id, t) => add(id, 'task complete', id + ': ' + t)} />} /> : !err && !(sc && sc.key === 'upload' && !UP.id) && <p>Loading...</p>}
+        detail={(u) => <Detail unit={u} query={qs(sc)} local={local} onYes={(id, t) => add(id, 'task complete', id + ': ' + t)} />} /> : !err && !(sc && sc.key === 'upload' && !UP.id) && <p>Loading...</p>}
       <LogPanel local={local} bundled={bundled} />
       </div>
     </main>
