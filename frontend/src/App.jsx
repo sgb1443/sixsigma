@@ -317,12 +317,13 @@ function Chip({ status }) { return <span className={'chip ' + status.replace(' '
 // Status bar: one box per unit in a fixed order, so the board never jumps around.
 // green = working, yellow = maintenance needed, red = act now (fridges: move the blood)
 const LIGHT = { OK: 'green', WATCH: 'green', 'MAINTENANCE COMPLETE': 'green', MAINTENANCE: 'yellow', URGENT: 'red', CRITICAL: 'red' }
-function StatusBar({ att, onOpen }) {
+function StatusBar({ att, pinned, onPick }) {
   const units = [...att.units].sort((a, b) => a.id.localeCompare(b.id))
   return (
     <section className="statusbar" aria-label="Status of every unit">
       {units.map((u) => (
-        <button key={u.id} className={'light ' + LIGHT[u.status]} onClick={() => onOpen(u)} title={'Open ' + u.id}>
+        <button key={u.id} className={'light ' + LIGHT[u.status] + (pinned === u.id ? ' picked' : '')} onClick={() => onPick(u)}
+          aria-pressed={pinned === u.id} title={pinned === u.id ? 'Unpin ' + u.id : 'Show ' + u.id + ' first'}>
           <b>{u.id}</b>
           <span>{ICON[u.status]} {u.status}</span>
           {LIGHT[u.status] === 'red' && u.kind === 'fridge' && <span className="act">move blood</span>}
@@ -353,12 +354,15 @@ function AckText({ alert, local }) {
   return <span className="note"> acknowledged{mine ? ` by ${mine.technician} at ${when(mine.service_date)}` : ' (in the log)'}</span>
 }
 
-function Attention({ att, local, onAck, onOpen, onComplete }) {
+function Attention({ att, pinned, local, onAck, onOpen, onComplete }) {
+  // a unit picked in the status bar goes first; the rest keep the API's most-urgent-first order
+  const units = pinned ? [...att.units].sort((a, b) => (b.id === pinned) - (a.id === pinned)) : att.units
   return (
-    <section className="panel">
+    <section className="panel" id="attention">
       <h2>Today's attention list</h2>
-      {att.units.map((u) => (
-        <div className="unit" key={u.id}>
+      {units.map((u) => (
+        <div className={'unit' + (u.id === pinned ? ' picked' : '')} key={u.id}>
+          {u.id === pinned && <div className="note">Picked from the status bar (click its box again to unpin)</div>}
           <div className="unit-head">
             <Chip status={u.status} />
             <b>{u.id}</b> <span className="sub">{u.kind}</span>
@@ -425,6 +429,12 @@ function App() {
   const [att, setAtt] = useState(null)
   const [bundled, setBundled] = useState(0)
   const [open, setOpen] = useState(null)
+  const [pinned, setPinned] = useState(null)
+  const pick = (u) => {
+    if (pinned === u.id) { setPinned(null); return }
+    setPinned(u.id); setOpen(u)
+    document.getElementById('attention')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
   const [err, setErr] = useState('')
 
   const refresh = (log) => {
@@ -449,8 +459,8 @@ function App() {
       <p className="sub">How to read this: start at the top and work down; the most urgent unit is first. Open a unit for its chart and numbers. Acknowledge says "seen, on it" and does not clear a data alert. Maintenance complete logs who and when and resolves the unit's current alerts; a new flag afterwards brings an alert back.</p>
       <div className="row"><label>Your name <input type="text" value={name} onChange={(e) => setName(e.target.value)} /></label></div>
       {err && <div className="err">{err}</div>}
-      {att && <StatusBar att={att} onOpen={setOpen} />}
-      {att ? <Attention att={att} local={local} onAck={(id, aid) => add(id, 'acknowledge', aid)} onOpen={setOpen} onComplete={(id) => add(id, 'maintenance complete', '')} /> : !err && <p>Loading...</p>}
+      {att && <StatusBar att={att} pinned={pinned} onPick={pick} />}
+      {att ? <Attention att={att} pinned={pinned} local={local} onAck={(id, aid) => add(id, 'acknowledge', aid)} onOpen={setOpen} onComplete={(id) => add(id, 'maintenance complete', '')} /> : !err && <p>Loading...</p>}
       {open && <Detail unit={open} hasAlerts={!!att && att.units.some((u) => u.id === open.id && u.alerts.length > 0)} local={local}
         onYes={(id, t) => add(id, t, '')} onComplete={(id) => add(id, 'maintenance complete', '')} />}
       <LogPanel local={local} bundled={bundled} onReplace={change} setErr={setErr} />

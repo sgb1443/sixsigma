@@ -172,3 +172,16 @@ tasks:
       newer than the completion time; in a browser, pressing Maintenance
       complete on FR-02 clears its alerts and its tag reads MAINTENANCE COMPLETE.
     result: "Maintenance complete button (with confirm) resolves a unit's alerts, newer flags re-trigger; plus red/yellow/green status bar and coloured number tiles; pytest 73 passed; browser-checked FR-02"
+
+  - id: H-10
+    title: Status bar click pins the unit to the top of the attention list
+    points: "supports 15 - Tool Design: clear user and use case"
+    status: done
+    owner: "team 11 + implementer agent (claude code)"
+    started_at: "2026-10-21 23:55"
+    owns: ["frontend/src/", "app/static/", "app/manifest.json"]
+    definition_of_done: >
+      In a browser, clicking a status-bar box moves that unit first in the
+      attention list (outlined) and opens its detail; clicking it again restores
+      the normal order.
+    result: "browser-checked: GEN-A last -> first on click, back to last on second click; pytest 73 passed"

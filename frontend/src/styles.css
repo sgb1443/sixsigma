@@ -58,3 +58,7 @@ td, th { border-bottom: 1px solid var(--grid); padding: 2px 8px; text-align: lef
 .tile.lvl-green { background: rgba(12, 163, 12, 0.14); border-color: #0ca30c; }
 .tile.lvl-yellow { background: rgba(250, 178, 25, 0.22); border-color: #fab219; }
 .tile.lvl-red { background: rgba(208, 59, 59, 0.16); border-color: #d03b3b; }
+
+/* the unit picked in the status bar: outlined in the bar and first in the list */
+.light.picked { outline: 3px solid #0b0b0b; outline-offset: 2px; }
+.unit.picked { outline: 2px solid #2a78d6; outline-offset: 4px; border-radius: 4px; }
