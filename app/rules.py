@@ -19,8 +19,9 @@ except ImportError:        # ... and when Posit Connect runs app/ as the bundle 
     from qc import fridge_summary, generator_summary
 
 TIERS = ["OK", "WATCH", "MAINTENANCE", "URGENT", "CRITICAL"]
-TIERS_SORT = {"MAINTENANCE COMPLETE": 0}   # sorts together with OK (after WATCH)
-COMPLETE = "maintenance complete"          # service_type of the operator's button row
+TIERS_SORT = {"TASKS COMPLETE": 0}   # sorts together with OK (after WATCH)
+COMPLETE = "maintenance complete"          # OLD unit-level button row (still read)
+TASK_DONE = "task complete"                # per-alert button row; notes = the alert id
 FRIDGE_INTERVALS = [          # (service_type, days, recommended task)
     ("coil cleaning", 90, "Clean the condenser coils and log it."),
     ("probe calibration", 180, "Calibrate the temperature probe against a reference."),
@@ -31,6 +32,7 @@ GEN_INTERVALS = [
     ("monthly load", 30, "Run the monthly load test and log it."),
 ]
 GEN_SERVICE = ("generator service", 365, "Book the annual generator service.")
+LIMITS = {t: d for t, d, _ in FRIDGE_INTERVALS + GEN_INTERVALS + [GEN_SERVICE]}   # service -> days
 LOG_COLUMNS = ["equipment_id", "service_date", "service_type", "technician", "notes"]
 DUTY_RISE = 10.0              # percentage points above the baseline week
 NEAR_HIGH, NEAR_LOW = 5.5, 1.5
@@ -62,7 +64,36 @@ def make_log(bundled, entries=None):
         t = pd.Timestamp(text)
         stamps.append(t + pd.Timedelta(days=1) - pd.Timedelta(seconds=1) if len(text) <= 10 else t)
     log["when"] = pd.Series(stamps, index=log.index, dtype="datetime64[ns]")
-    return log
+    # A "task complete" row about a service also counts as that service done on that date.
+    extra = []
+    for _, row in log[log["service_type"] == TASK_DONE].iterrows():
+        service = _task_service(row)
+        if service:
+            before = log[(log["equipment_id"] == row["equipment_id"]) & (log["service_type"] == service)
+                         & (log["when"] < row["when"])]
+            limit = LIMITS[service]
+            overdue = before.empty or (row["when"].normalize() - before["when"].max().normalize()).days > limit
+            # notes = the id of the overdue alert this clears ("" if the service was not overdue)
+            extra.append({**row.to_dict(), "service_type": service,
+                          "notes": f"{row['equipment_id']}:{service} overdue" if overdue else ""})
+    return pd.concat([log, pd.DataFrame(extra, columns=log.columns)], ignore_index=True) if extra else log
+
+
+def _task_service(row):
+    """The service type a "task complete" row stands for, or None.
+
+    Two note formats are written by the page: a checklist tick, "FR-03: coil cleaning", and the
+    button on an overdue alert, "FR-02:coil cleaning overdue: Clean the condenser coils ...".
+    """
+    unit, notes = str(row["equipment_id"]).strip(), str(row["notes"]).strip()
+    if notes.startswith(unit + ": "):
+        name = notes[len(unit) + 2:]
+    elif notes.startswith(unit + ":"):
+        name = notes[len(unit) + 1:].split(": ")[0]
+        name = name[:-len(" overdue")] if name.endswith(" overdue") else ""
+    else:
+        return None
+    return name if name in LIMITS else None
 
 
 def _last_service(log, equipment_id, service_type):
@@ -98,9 +129,12 @@ def _finish(equipment_id, alerts, log, now):
 
     Escalation: only MAINTENANCE alerts are escalated by the 24 h timer: WATCH is "not an
     action", and URGENT / CRITICAL are already at the top or beyond.
-    Maintenance complete: done_at = the latest "maintenance complete" log row of this unit.
-    Alerts with last_seen <= done_at are resolved (moved to resolved_alerts); alerts with newer
-    evidence stay, marked retriggered. Nothing left after a press: status MAINTENANCE COMPLETE.
+    Task complete: a "task complete" row of this unit with notes = "<alert id>: <task text>" resolves that alert
+    if its time is not older than the alert's last_seen; with newer evidence the alert stays,
+    marked retriggered. A task complete on an overdue-service alert also counts as that service
+    (make_log adds the service row), which clears the alert and resets days_since. The old
+    unit-level "maintenance complete" row resolves every alert with last_seen up to its time.
+    Something resolved and nothing left active: status TASKS COMPLETE.
     """
     for a in alerts:
         if a["last_seen"] is None:
@@ -110,25 +144,40 @@ def _finish(equipment_id, alerts, log, now):
                           and now - a["since"] > DAY)
         if a["escalated"]:
             a["tier"] = "URGENT"
-            a["message"] += " Active for more than 24 h with no acknowledgement."
+            a["message"] += " Active for more than 24 h without its task completed."
         a["retriggered"] = False
 
-    rows = log[(log["equipment_id"] == equipment_id) & (log["service_type"] == COMPLETE)]
-    done_at, who, resolved = None, "", []
-    if not rows.empty:
-        last = rows.sort_values("when").iloc[-1]
-        done_at, who = last["when"], last["technician"]
-        for a in list(alerts):
-            if a["last_seen"] <= done_at:
-                alerts.remove(a)
-                resolved.append({"id": a["id"], "tier": a["tier"], "message": a["message"]})
-            else:
-                a["retriggered"] = True
+    mine = log[log["equipment_id"] == equipment_id]
+    old = mine[mine["service_type"] == COMPLETE]       # old unit-level rows (kept for old logs)
+    old_at = old["when"].max() if not old.empty else None
+    old_who = old.sort_values("when").iloc[-1]["technician"] if not old.empty else ""
+    done = mine[mine["service_type"] == TASK_DONE]
+    resolved, stamps = [], []                          # stamps: (time, who) of each resolving row
+    for a in list(alerts):
+        rows = done[done["notes"].map(lambda n: n == a["id"] or n.startswith(a["id"] + ":"))]
+        if old_at is not None and a["last_seen"] <= old_at:
+            rows, at, who = old, old_at, old_who
+        elif not rows.empty and a["last_seen"] <= rows["when"].max():
+            at, who = rows["when"].max(), rows.sort_values("when").iloc[-1]["technician"]
+        else:
+            a["retriggered"] = (old_at is not None) or not rows.empty
+            continue
+        alerts.remove(a)
+        resolved.append({"id": a["id"], "tier": a["tier"], "message": a["message"]})
+        stamps.append((at, who))
+    # an overdue-service alert that a service row from the page (notes = the alert id) has cleared
+    active = {a["id"] for a in alerts}
+    for _, row in mine[mine["notes"].str.endswith(" overdue")].iterrows():
+        if row["notes"] not in active and row["service_type"] not in (TASK_DONE, COMPLETE, "acknowledge"):
+            resolved.append({"id": row["notes"], "tier": "MAINTENANCE",
+                             "message": f"{row['service_type'].capitalize()} logged."})
+            stamps.append((row["when"], row["technician"]))
+    done_at, who = (max(stamps, key=lambda x: x[0]) if stamps else (old_at, old_who))
     for a in alerts:
         a["since"], a["last_seen"] = _fmt(a["since"]), _fmt(a["last_seen"])
     status = max((a["tier"] for a in alerts), key=TIERS.index, default="OK")
-    if status == "OK" and done_at is not None:
-        status = "MAINTENANCE COMPLETE"
+    if status == "OK" and (resolved or old_at is not None):
+        status = "TASKS COMPLETE"
     alerts.sort(key=lambda a: (-TIERS.index(a["tier"]), a["id"]))
     return {"status": status, "maintenance_complete_at": None if done_at is None else _fmt(done_at),
             "resolved_by": who or None, "resolved_alerts": resolved}
@@ -150,7 +199,7 @@ def _interval_alerts(equipment_id, items, log, now, first_known, extra_last=None
             days_since[service_type] = None
             since, text = pd.Timestamp(first_known).normalize(), "no record in the log"
         else:
-            days_since[service_type] = (now.normalize() - last).days
+            days_since[service_type] = max(0, (now.normalize() - last).days)
             since, text = last + pd.Timedelta(days=days), f"last done {_fmt(last)}"
         if now.normalize() - since > pd.Timedelta(0):
             alerts.append(_alert(equipment_id, f"{service_type} overdue", "interval", "MAINTENANCE",
@@ -380,13 +429,14 @@ def generator_status(tests, gen_id, log, as_of):
 # Attention list
 # ---------------------------------------------------------------------------
 def _rank(status):
-    """Sort rank of a status; MAINTENANCE COMPLETE ranks with OK."""
+    """Sort rank of a status; TASKS COMPLETE ranks with OK."""
     return TIERS.index(status) if status in TIERS else TIERS_SORT[status]
 
 
 def _row(unit_id, kind, r):
     """One unit of the attention list: the fields of fridge_status / generator_status."""
-    keys = ("status", "alerts", "maintenance_complete_at", "resolved_by", "resolved_alerts")
+    keys = ("status", "alerts", "maintenance_complete_at", "resolved_by", "resolved_alerts",
+            "days_since")
     return {"id": unit_id, "kind": kind, **{k: r[k] for k in keys}}
 
 

@@ -6,6 +6,8 @@ The page shows the attention list (most urgent first). Click **Open detail** on 
 
 Fridge chart: hourly mean temperature of the latest week, with limits from the baseline week. Red dot = beyond the limits, amber diamond = run of 8 on one side of the center line, shaded band = the 1-6 °C spec. Generator chart: one bar per month for the share of start tests that failed (grey = too few tests to judge, red with a triangle = signal).
 
+This page walks through **Scenario 1: Mixed problems**, the default of the "Test dataset:" dropdown. The sections at the end show the other three scenarios.
+
 ## FR-01 (healthy unit)
 Click path: **FR-01** row, **Open detail**. `curl http://localhost:8000/fridges/FR-01`
 - Status **WATCH**: one hour beyond the baseline limits in the last 24 h (not an action).
@@ -15,30 +17,22 @@ Click path: **FR-01** row, **Open detail**. `curl http://localhost:8000/fridges/
 
 ## FR-02 (drifting warm)
 `curl http://localhost:8000/fridges/FR-02`
-- Status **URGENT**. Alerts: "Coil cleaning overdue (last done 2026-07-10, interval 90 days)" and "Hourly temperature outside the baseline limits 3.69-4.31 C (24 hours beyond, run of 8: yes)". Both were active for more than 24 h with no acknowledgement, so the tool raised them from MAINTENANCE to URGENT.
+- Status **URGENT**. Alerts: "Coil cleaning overdue (last done 2026-07-10, interval 90 days)" and "Hourly temperature outside the baseline limits 3.69-4.31 C (24 hours beyond, run of 8: yes)". Both were active for more than 24 h without their task completed, so the tool raised them from MAINTENANCE to URGENT.
 - Center 4.000, sigma 0.103, UCL 4.309, LCL 3.690. Cp 7.89, Cpk 5.14, Pp 2.05, **Ppk 1.3331** (just above the 1.33 line). 76 hours beyond the limits and 83 run-rule points (the two overlap; 84 flagged in all). Days since: coils 102, probe calibration 127, full service 320.
 - Chart: the line climbs above the UCL and stays there, a long red stretch.
 - How to read: the drift is caught by the control chart, not by Ppk; Cpk (5.14) looks fine only because 15-min readings are autocorrelated.
 
-### Walkthrough: acknowledge, then tick the checklist
-Each step is a real `POST /attention` with the entries the page would send. On the page: click **Acknowledge** under an FR-02 alert, then open FR-02 and tick "coil cleaning: done, yes".
-1. No entries: FR-02 is **URGENT**, with "coil cleaning overdue" (URGENT) and "control chart drift" (URGENT).
-2. Acknowledge the coil alert (a log row `FR-02, 2026-10-20T08:00:00, acknowledge, manager, "FR-02:coil cleaning overdue"`): the coil alert drops to **MAINTENANCE** and shows "acknowledged by manager"; FR-02 is still **URGENT** because the drift alert is not acknowledged.
-3. Acknowledge the drift alert too: FR-02 drops to **MAINTENANCE**. The drift alert stays (acknowledging says "seen, on it" and does not clear a data alert).
-4. Tick "coil cleaning: done, yes" (row `FR-02, 2026-10-20T08:05:00, coil cleaning, manager`): the coil alert is gone. Only "control chart drift" remains, until the data recovers.
-
-Real output of step 4: `MAINTENANCE [('control chart drift', 'MAINTENANCE', True)]`. After step 4 the full list is FR-03 URGENT, GEN-B URGENT, FR-02 MAINTENANCE, FR-04 MAINTENANCE, FR-01 WATCH, GEN-A OK.
-
-### Close the loop: press "Maintenance complete"
-On the page: after the fix, press **Maintenance complete** next to FR-02 (or in its detail panel). It logs one row, `FR-02, 2026-10-20T07:00:00, maintenance complete, Sam`, and resolves every FR-02 alert whose newest evidence (`last_seen`) is no newer than that moment. Real `POST /attention` output (no other entries):
-- Before: FR-02 **URGENT**; active `FR-02:coil cleaning overdue`, `FR-02:control chart drift`; resolved none.
-- After: FR-02 **MAINTENANCE COMPLETE**, `maintenance_complete_at` 2026-10-20T07:00:00, `resolved_by` Sam; active none; resolved `FR-02:control chart drift`, `FR-02:coil cleaning overdue`. The page shows a green check chip and "Resolved by Sam at 2026-10-20 07:00: ...".
-- Re-trigger: if the data flags again after that time (a new flagged hour, an out-of-spec or stuck reading, a door or power event, or a newer failing generator test), the alert comes back marked "re-triggered after maintenance".
-- GEN-B works the same: pressing it with the same row resolves all seven GEN-B alerts, including the failed start dated 2026-10-20.
+### Close the loop: press "Task complete" on each alert
+On the page: each FR-02 alert has its own **Task complete** button next to its task; it asks "Done: <task>? Yes / Cancel". Real `POST /attention` output, the rows being what the page sends (technician Sam, 2026-10-21 09:00):
+- Before: FR-02 **URGENT**; active `FR-02:coil cleaning overdue`, `FR-02:control chart drift`; `days_since` coil cleaning 102.
+- Row 1: `FR-02, 2026-10-21T09:00:00, task complete, Sam, "FR-02:coil cleaning overdue: Clean the condenser coils and log it."` Result: the coil alert is resolved **and** `days_since["coil cleaning"]` is 0 (a task complete on an overdue-service alert also counts as that service done; the row is after "now", so days are clamped at 0). FR-02 is still URGENT because the drift alert is active.
+- Row 2: `FR-02, 2026-10-21T09:00:00, task complete, Sam, "FR-02:control chart drift: Inspect the unit: door seal, coils, load and set point."` Result: FR-02 **TASKS COMPLETE**, `resolved_by` Sam, `maintenance_complete_at` 2026-10-21T09:00:00; active none; resolved `FR-02:control chart drift`, `FR-02:coil cleaning overdue`. The page shows each finished alert as a green ✓ DONE row and the FR-02 box turns green.
+- A routine-task tick is the same kind of row: `FR-02, ..., task complete, Sam, "FR-02: probe calibration"` sets `days_since["probe calibration"]` to 0 (it was 127) and fills and greys the tick-box.
+- Re-trigger: if the data flags again after that time (a new flagged hour, an out-of-spec or stuck reading, a door or power event, or a newer failing generator test), the alert comes back marked "re-triggered after a task was completed".
 
 ## FR-03 (door-seal problem)
 `curl http://localhost:8000/fridges/FR-03`
-- Status **URGENT**. Alerts: "2 reading(s) outside 1-6 C earlier this week, last at 2026-10-16T14:45:00" (URGENT, unacknowledged for more than 24 h) and "Door open on 2 or more consecutive readings (over 5 min) in the last 24 h" (MAINTENANCE).
+- Status **URGENT**. Alerts: "2 reading(s) outside 1-6 C earlier this week, last at 2026-10-16T14:45:00" (URGENT, not completed for more than 24 h) and "Door open on 2 or more consecutive readings (over 5 min) in the last 24 h" (MAINTENANCE).
 - Out-of-spec readings: 2026-10-16 14:30 = 6.1 °C and 14:45 = 6.4 °C.
 - Center 4.094, sigma 0.153, UCL 4.554, LCL 3.634. Cp 6.85, Cpk 5.27, Pp 2.65, Ppk 2.0389. Days since coils 49.
 - Chart: red dots (9 beyond the limits) and amber diamonds earlier in the week; calm in the last 24 h (no I-MR signal there).
@@ -65,5 +59,31 @@ Click path: **GEN-A**, **Open detail**. `curl http://localhost:8000/generators/G
 - Dead time: failures N = 2, lambda 0.01099 per day, T = 7 days, U (exact) 0.0375, lambda*T/2 approximation 0.0385, U at the 95% upper lambda 0.1269, T_max 1.83 days. Caveat: "based on only 2 failures: a rough estimate".
 - How to read: U above 1% means a standby generator that is tested weekly is unavailable about 3.7% of the time; the 12.7% figure is the pessimistic bound.
 
+## Scenario 2: All healthy
+Pick **Scenario 2: All healthy** in the dropdown (or `curl "http://localhost:8000/attention?scenario=healthy"`). Real output, statuses per unit: FR-01 OK, FR-02 OK, FR-03 OK, FR-04 OK, GEN-A OK, GEN-B OK, with no alerts at all. The status bar is all green. See the note in [data/README.md](../data/README.md#scenarios) on why a healthy fridge can still get a stray WATCH.
+
+## Scenario 3: Blackout day
+Pick **Scenario 3: Blackout day** (`curl "http://localhost:8000/attention?scenario=blackout"`). Grid outage 2026-10-19T22:00 to 2026-10-20T01:45; GEN-A failed its weekly start test on 2026-10-19. Real output:
+- FR-02 **CRITICAL**: reading outside 1-6 C (peak 6.4 C at 01:45), temperature near the limit, control chart drift, power loss. Move the blood now.
+- FR-01 **URGENT**: temperature near the limit (peak 5.9 C), control chart drift, power loss.
+- GEN-A **URGENT**: failed start (weekly start), low battery, p-chart signal, dead-time risk (URGENT only because the failure is over 24 h old without its task completed; completing its task clears it).
+- FR-03 **MAINTENANCE** and FR-04 **MAINTENANCE**: control chart drift, power loss (peaks 5.1 and 5.0 C).
+- GEN-B **OK**.
+Every fridge has a "power loss" alert, so the status bar shows two red fridges, one red generator, two yellow fridges and one green generator.
+
+## Scenario 4: Random data
+Pick **Scenario 4: Random data**; the page shows "Seed N" and a "New random data" button, and an **Answer key** box. With a fixed seed (`curl "http://localhost:8000/attention?scenario=random&seed=2026"`) the data is always the same. Real output for seed 2026:
+- Answer key: FR-01 healthy (also probe calibration overdue, 213 days); FR-02 stuck probe (from 2026-10-19 06:15); FR-03 door-seal problem (door open 3 readings in a row at 2026-10-19 18:45); FR-04 door-seal problem (2 readings at 20:45); GEN-A healthy; GEN-B failed to start at the weekly test on 2026-10-20.
+- Tool: FR-01 **URGENT** (probe calibration overdue, plus a control chart drift alert on a healthy fridge: the method's false-alarm rate, see data/README.md), FR-02 **MAINTENANCE** (stuck probe, drift), FR-03 **MAINTENANCE** (door open), FR-04 **MAINTENANCE** (door open, drift), GEN-B **MAINTENANCE** (failed start, low battery, p-chart signal, dead-time risk), GEN-A OK.
+
 ## The log
 Everything you click is kept in the **Log** panel. **Download log CSV** saves it (`equipment_id,service_date,service_type,technician,notes`); **Upload log CSV** loads it back and replaces the entries. The server stores nothing.
+
+## Moving blood (Scenario 3: Blackout day, checked in a browser)
+1. Pick **Scenario 3: Blackout day**. FR-02 is **CRITICAL** (red), FR-01 URGENT (red), FR-03 and FR-04 MAINTENANCE (yellow); every fridge box says **IN USE**.
+2. FR-02 shows **Move FR-02's blood to FR-03** (no fridge is green, so the first yellow one). Confirm: FR-02 becomes **EMPTY: blood in FR-03**, FR-03 **IN USE · also holding FR-02's blood**. The log gets `blood moved | FR-02 -> FR-03`.
+3. Press **Task complete** on each of FR-02's four alerts: each turns into a green ✓ DONE row, and FR-02 becomes **✓ TASKS COMPLETE** (green).
+4. **All tasks complete: move blood back from FR-03 to FR-02** appears. Press it: both are **IN USE** again; the log gets `blood returned | FR-03 -> FR-02`.
+
+## Download a dataset
+Under the dataset dropdown, the three links download the selected scenario's input files, e.g. `http://localhost:8000/data/fridge_telemetry.csv?scenario=blackout`, or for Scenario 4 `...?scenario=random&seed=2026` (the generated week for that seed).

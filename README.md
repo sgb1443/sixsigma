@@ -17,23 +17,37 @@ bash app/testme.sh          # then open http://localhost:8000
 ```
 
 - Windows: use Git Bash for `bash app/testme.sh`, or run `cd app && python -m uvicorn main:app --port 8000`.
-- Tests: `python -m pytest tests` (73 tests pass).
+- Tests: `python -m pytest tests` (111 tests pass).
 - Node is only needed to rebuild the page: `cd frontend && npm install && npm run build` (output goes to `app/static/`, which is committed).
 
 ## Using the page
 
 | Part | What it does |
 |---|---|
-| Status bar | One box per unit. Green = working (OK, WATCH, MAINTENANCE COMPLETE), yellow = MAINTENANCE, red = URGENT or CRITICAL (red fridges also say "move blood"). Click a box to open the unit. |
+| Test dataset | The "Test dataset:" dropdown at the top switches between four scenarios (see [Test datasets](#test-datasets)). Each scenario keeps its own log in the browser. |
+| Status bar | One box per unit. Green = working (OK, WATCH, TASKS COMPLETE), yellow = MAINTENANCE, red = URGENT or CRITICAL (red fridges also say "move blood"). Click a box to pin that unit to the top of the list and open its detail there; click it again to undo. |
 | Attention list | Every unit, most urgent first, each with a recommended task. Start at the top and work down. "Now" is the last timestamp in the data. |
-| Open detail | Fridge: I-MR chart (red = beyond limits, amber = run of 8, shaded 1-6 °C band). Generator: monthly p-chart and the dead-time block. Plus days since each service and number tiles. Every chart has hover tooltips and a "Show as table" view. |
+| Open detail | Opens right under the unit's row (one at a time; the button then reads "Close detail"). Fridge: I-MR chart (red = beyond limits, amber = run of 8, shaded 1-6 °C band). Generator: monthly p-chart and the dead-time block. Plus days since each service and number tiles. Every chart has hover tooltips and a "Show as table" view. |
 | Number tiles | Tinted with a word. Temperatures: green inside 1.5-5.5 °C, yellow at or beyond 1.5 / 5.5 °C, red outside 1-6 °C. Cp, Cpk, Pp, Ppk: green ≥ 1.33, yellow 1.00-1.33, red < 1.00. Dead-time U: green ≤ 1%, yellow above. T_max: green if at least the test interval. Failures N: yellow if any. Sigma has no colour. |
-| Acknowledge | Logs who responded and when; stops the 24 h timer that escalates an unacknowledged alert to URGENT. It says "seen, on it" and does **not** clear a data alert. |
-| Maintenance complete | After a confirm, logs who and when and resolves the unit's alerts whose evidence is no newer than that moment. The unit shows MAINTENANCE COMPLETE. If the data flags again afterwards, the alert returns marked "re-triggered after maintenance". |
-| Checklist | Yes/no questions per unit; each "yes" is logged with today's date and clears that service-interval alert. |
+| Finished tasks | A completed alert stays listed as a green **✓ DONE** row with who and when; the unit's colour is recalculated from what is left (red → yellow → green). |
+| Move blood | A red fridge offers "Move FR-02's blood to FR-04" (a green fridge, else yellow). The fridge then shows **EMPTY**, the backup **IN USE · also holding FR-02's blood**. When all the fridge's tasks are complete: "All tasks complete: move blood back". Every fridge box shows IN USE or EMPTY. |
+| Download data | Under the dataset dropdown: the three input CSVs of the selected scenario (the random week as generated, for its seed). |
+| Task complete | One button per alert, next to its task. After a confirm ("Done: <task>? Yes / Cancel") it logs who and when and resolves that one alert (if its evidence is no newer than that moment). On an overdue-service alert it also counts as that service done today (days since = 0). When every alert of a unit is done, the unit shows TASKS COMPLETE. If the data flags again afterwards, the alert returns marked "re-triggered after a task was completed". |
+| Routine tasks | Tick-boxes per unit; each tick is logged as a task complete ("FR-03: coil cleaning"), counts as that service done today, and clears its overdue alert. |
 | Log | Download or upload the maintenance log as CSV. The log is kept **per browser** (the API stores nothing), so download it to move it. |
 
 Walkthrough of every test unit with real output: [demo/README.md](demo/README.md).
+
+## Test datasets
+
+The **Test dataset:** dropdown on the page (and the `scenario` parameter of the API) picks one of four scenarios. All use the same three file formats and the same 14-day window ending 2026-10-20 06:00. Details, exact timestamps and what each unit should show: [data/README.md](data/README.md#scenarios).
+
+| Scenario | What it shows |
+|---|---|
+| 1: Mixed problems (default) | One healthy fridge, one drifting warm, one with a door-seal problem, one stuck probe; one healthy generator, one with failed starts. |
+| 2: All healthy | Nothing wrong. Every unit is OK. |
+| 3: Blackout day | A grid outage in the last 24 h hits all four fridges (FR-02 goes above 6 C: CRITICAL) and GEN-A failed its weekly start test the day before. |
+| 4: Random data | Generated from a random seed shown on the page ("New random data" picks another). The same seed always gives the same data. An **answer key** lists what was planted in each unit so you can compare it with the status bar. There are no fixed expected numbers. |
 
 ## Inputs
 
@@ -85,10 +99,10 @@ Known answers: λ = 0.001, T = 30 gives λT/2 = 0.015, U = 0.014851. μ_U is 3.6
 |---|---|
 | WATCH | Exactly one beyond-limit hour in the last 24 h, no run of 8. Not an action. |
 | MAINTENANCE | Drift (run of 8, or 2+ beyond-limit hours in 24 h), duty up 10+ points vs baseline, Ppk < 1.33, stuck probe, a reading outside 1-6 °C earlier in the week, overdue service (coils 90 d, probe 180 d, full 365 d), power loss or door open > 5 min. Generators: failed start, start > 10 s, battery < 12.2 V, fuel < 50%, unstable output, p-chart signal, overdue test (weekly 7 d, monthly load 30 d, service 365 d), U > 1%. |
-| URGENT | A MAINTENANCE alert plus a raw reading in the last 24 h at ≥ 5.5 °C or ≤ 1.5 °C; or any alert active over 24 h with no acknowledgement. Swap the unit, move blood to backup. |
+| URGENT | A MAINTENANCE alert plus a raw reading in the last 24 h at ≥ 5.5 °C or ≤ 1.5 °C; or any alert active over 24 h without its task completed. Swap the unit, move blood to backup. |
 | CRITICAL | Any raw reading in the last 24 h outside 1-6 °C. Move blood now. |
 
-**How alerts clear:** service-interval alerts by a checklist "yes"; data alerts on their own when the data returns to normal (I-MR: no signal in the last 24 h); generator test alerts on the next passing test; any alert by **Maintenance complete** (until re-triggered). Acknowledge never clears an alert.
+**How alerts clear:** service-interval alerts by a routine-task tick or Task complete; data alerts on their own when the data returns to normal (I-MR: no signal in the last 24 h); generator test alerts on the next passing test; any single alert by **Task complete** (until re-triggered). A unit with at least one task completed and nothing active shows TASKS COMPLETE.
 
 ## API
 

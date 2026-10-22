@@ -241,7 +241,7 @@ def test_press_on_fr02_resolves_all_its_alerts():
     before = units(rules.attention_list(tele, tests, rules.make_log(base)))["FR-02"]
     after = units(rules.attention_list(
         tele, tests, rules.make_log(base, [press("FR-02", "2026-10-20T07:00:00")])))["FR-02"]
-    assert after["alerts"] == [] and after["status"] == "MAINTENANCE COMPLETE"
+    assert after["alerts"] == [] and after["status"] == "TASKS COMPLETE"
     assert after["resolved_by"] == "Sam" and after["maintenance_complete_at"] == "2026-10-20T07:00:00"
     assert sorted(a["id"] for a in after["resolved_alerts"]) == sorted(a["id"] for a in before["alerts"])
 
@@ -251,7 +251,7 @@ def test_press_on_gen_b_resolves_including_todays_failed_start():
     before = units(rules.attention_list(tele, tests, rules.make_log(base)))["GEN-B"]
     after = units(rules.attention_list(
         tele, tests, rules.make_log(base, [press("GEN-B", "2026-10-20T07:00:00")])))["GEN-B"]
-    assert after["alerts"] == [] and after["status"] == "MAINTENANCE COMPLETE"
+    assert after["alerts"] == [] and after["status"] == "TASKS COMPLETE"
     assert "GEN-B:failed start (weekly start)" in [a["id"] for a in after["resolved_alerts"]]
     assert len(after["resolved_alerts"]) == len(before["alerts"])
 
@@ -260,8 +260,8 @@ def test_complete_unit_sorts_with_ok_after_watch():
     tele, tests, base = bundled()
     att = rules.attention_list(tele, tests, rules.make_log(base, [press("FR-02", "2026-10-20T07:00:00")]))
     order = [u["status"] for u in att["units"]]
-    assert order.index("WATCH") < order.index("MAINTENANCE COMPLETE")
-    assert "URGENT" not in order[order.index("MAINTENANCE COMPLETE"):]
+    assert order.index("WATCH") < order.index("TASKS COMPLETE")
+    assert "URGENT" not in order[order.index("TASKS COMPLETE"):]
 
 
 def test_fridge_flag_after_the_press_retriggers_and_before_it_does_not():
@@ -273,7 +273,7 @@ def test_fridge_flag_after_the_press_retriggers_and_before_it_does_not():
     assert r["alerts"][0]["last_seen"] == "2026-10-20T03:00:00"
     late = rules.make_log(good_log().drop(columns="when"), [press("FR-T", "2026-10-20T04:00:00")])
     r2 = rules.fridge_status(df, "FR-T", late)
-    assert r2["alerts"] == [] and r2["status"] == "MAINTENANCE COMPLETE"
+    assert r2["alerts"] == [] and r2["status"] == "TASKS COMPLETE"
     assert [a["id"] for a in r2["resolved_alerts"]] == ["FR-T:control chart watch"]
 
 
@@ -282,6 +282,80 @@ def test_failing_generator_test_after_the_press_retriggers():
     log = rules.make_log(gen_log().drop(columns="when"), [press("GEN-T", "2026-10-13T07:00:00")])
     r = rules.generator_status(bad, "GEN-T", log, NOW)
     assert "GEN-T:failed start (weekly start)" in ids(r)
-    assert all(a["retriggered"] for a in r["alerts"]) and r["status"] != "MAINTENANCE COMPLETE"
+    assert all(a["retriggered"] for a in r["alerts"]) and r["status"] != "TASKS COMPLETE"
     same_day = rules.make_log(gen_log().drop(columns="when"), [press("GEN-T", "2026-10-20T07:00:00")])
     assert rules.generator_status(bad, "GEN-T", same_day, NOW)["alerts"] == []
+
+
+# ---------------------------------------------------------------------------
+# Task complete (per-alert button) and routine-task ticks (SPEC.md section 6)
+# ---------------------------------------------------------------------------
+def done(equipment_id, notes, when="2026-10-21T09:00:00", who="Sam"):
+    """A 'task complete' log row, as the page writes it."""
+    return {"equipment_id": equipment_id, "service_date": when, "service_type": "task complete",
+            "technician": who, "notes": notes}
+
+
+def fr02_after(*entries):
+    tele, tests, base = bundled()
+    return units(rules.attention_list(tele, tests, rules.make_log(base, list(entries))))["FR-02"]
+
+
+def test_task_complete_resolves_only_that_alert():
+    before = fr02_after()
+    target = "FR-02:control chart drift"
+    after = fr02_after(done("FR-02", target + ": Inspect the unit: door seal, coils, load and set point."))
+    assert target not in [a["id"] for a in after["alerts"]]
+    assert [a["id"] for a in after["resolved_alerts"]] == [target]
+    assert len(after["alerts"]) == len(before["alerts"]) - 1
+    assert after["status"] != "TASKS COMPLETE"
+    assert after["resolved_by"] == "Sam"
+
+
+def test_task_complete_on_overdue_service_clears_it_and_resets_days_since():
+    before = fr02_after()
+    assert before["days_since"]["coil cleaning"] == 102
+    after = fr02_after(done("FR-02", "FR-02:coil cleaning overdue: Clean the condenser coils and log it."))
+    assert after["days_since"]["coil cleaning"] == 0          # the row is after as_of: clamped to 0
+    assert "FR-02:coil cleaning overdue" not in [a["id"] for a in after["alerts"]]
+    assert [a["id"] for a in after["resolved_alerts"]] == ["FR-02:coil cleaning overdue"]
+    assert after["days_since"]["probe calibration"] == before["days_since"]["probe calibration"]
+
+
+def test_checklist_tick_resets_days_since_and_clears_the_coil_alert():
+    after = fr02_after(done("FR-02", "FR-02: coil cleaning"))
+    assert after["days_since"]["coil cleaning"] == 0
+    assert "FR-02:coil cleaning overdue" not in [a["id"] for a in after["alerts"]]
+
+
+def test_checklist_tick_of_a_service_that_is_not_overdue_resolves_nothing():
+    tele, tests, base = bundled()
+    fr01 = units(rules.attention_list(tele, tests, rules.make_log(base, [done("FR-01", "FR-01: coil cleaning")])))["FR-01"]
+    assert fr01["days_since"]["coil cleaning"] == 0
+    assert fr01["resolved_alerts"] == [] and fr01["status"] != "TASKS COMPLETE"
+
+
+def test_all_alerts_cleared_by_task_complete_gives_tasks_complete():
+    entries = [done("FR-02", a["id"] + ": " + a["task"]) for a in fr02_after()["alerts"]]
+    after = fr02_after(*entries)
+    assert after["alerts"] == [] and after["status"] == "TASKS COMPLETE"
+    assert len(after["resolved_alerts"]) == len(entries)
+
+
+def test_task_complete_followed_by_newer_evidence_retriggers():
+    df = make_fridge()
+    hour_at(df, "2026-10-20 02:00", 5.0)             # last_seen 03:00
+    row = done("FR-T", "FR-T:control chart watch: Look at the chart again", "2026-10-20T02:30:00")
+    r = rules.fridge_status(df, "FR-T", rules.make_log(good_log().drop(columns="when"), [row]))
+    assert ids(r) == ["FR-T:control chart watch"] and r["alerts"][0]["retriggered"] is True
+    row["service_date"] = "2026-10-20T04:00:00"
+    r2 = rules.fridge_status(df, "FR-T", rules.make_log(good_log().drop(columns="when"), [row]))
+    assert r2["alerts"] == [] and r2["status"] == "TASKS COMPLETE"
+
+
+def test_plain_service_rows_count_as_before():
+    plain = {"equipment_id": "FR-02", "service_date": "2026-10-20", "service_type": "coil cleaning",
+             "technician": "Sam", "notes": ""}
+    after = fr02_after(plain)
+    assert after["days_since"]["coil cleaning"] == 0
+    assert "FR-02:coil cleaning overdue" not in [a["id"] for a in after["alerts"]]

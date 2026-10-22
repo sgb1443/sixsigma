@@ -6,8 +6,12 @@ All data is INVENTED. See data/README.md for the story planted in each unit.
 """
 import csv
 import random
+import sys
 from datetime import datetime, timedelta, date
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app import simulate   # building blocks for scenarios 2 and 3 (scenario 1 below is unchanged)
 
 OUT = Path(__file__).resolve().parent
 SEED = 20261020
@@ -100,7 +104,7 @@ def fridge_unit(unit_id, rng):
 def write_fridge(rng):
     with open(OUT / "fridge_telemetry.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["unit_id", "timestamp", "temp_c", "door_open",
-                                          "power_on", "compressor_duty"])
+                                          "power_on", "compressor_duty"], lineterminator="\n")
         w.writeheader()
         for u in ("FR-01", "FR-02", "FR-03", "FR-04"):
             w.writerows(fridge_unit(u, rng))
@@ -142,12 +146,12 @@ def write_generators(rng):
                          "output_stable": stable})
     with open(OUT / "generator_tests.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["generator_id", "test_date", "test_type", "started",
-                                          "seconds_to_start", "battery_v", "fuel_pct", "output_stable"])
+                                          "seconds_to_start", "battery_v", "fuel_pct", "output_stable"], lineterminator="\n")
         w.writeheader()
         w.writerows(rows)
 
 
-def write_maintenance():
+def write_maintenance(folder=OUT, fix_fr02=False):
     L = [
         # equipment, date, type, tech, notes
         ("FR-01", "2025-11-18", "full service", "MK", "Annual service, door gasket checked"),
@@ -168,10 +172,46 @@ def write_maintenance():
         ("GEN-A", "2026-03-15", "generator service", "Ravi", "Oil, filter and battery check"),
         ("GEN-B", "2026-02-20", "generator service", "Ravi", "Oil, filter and battery check"),
     ]
-    with open(OUT / "maintenance_log.csv", "w", newline="") as f:
-        w = csv.writer(f)
+    if fix_fr02:   # scenarios 2 and 3: nothing overdue, FR-02 coils cleaned on 2026-09-02
+        L = [r if r[:3] != ("FR-02", "2026-07-10", "coil cleaning") else (r[0], "2026-09-02", *r[2:4], "Coils cleaned")
+             for r in L]
+    with open(folder / "maintenance_log.csv", "w", newline="") as f:
+        w = csv.writer(f, lineterminator="\n")
         w.writerow(["equipment_id", "service_date", "service_type", "technician", "notes"])
         w.writerows(L)
+
+
+def write_csv(folder, name, fields, rows):
+    folder.mkdir(exist_ok=True)
+    with open(folder / name, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+
+
+def write_healthy():
+    """Scenario 2, data/all_healthy/: nothing wrong anywhere (its own seed, see data/README.md)."""
+    folder, rng = OUT / "all_healthy", random.Random(SEED + 7)
+    fridge = [r for u in simulate.FRIDGES for r in simulate.fridge_rows(u, rng)]
+    gens = simulate.generator_rows(rng, simulate.weekly_dates(date(2026, 10, 20)))
+    write_csv(folder, "fridge_telemetry.csv", simulate.FRIDGE_FIELDS, fridge)
+    write_csv(folder, "generator_tests.csv", simulate.GEN_FIELDS, gens)
+    write_maintenance(folder, fix_fr02=True)
+
+
+def write_blackout():
+    """Scenario 3, data/blackout_day/: grid outage 2026-10-19T22:00 to 2026-10-20T01:45 (16 readings
+    with power_on = 0, power back at 02:00); GEN-A failed its weekly start test on 2026-10-19."""
+    folder, rng = OUT / "blackout_day", random.Random(SEED + 3)
+    first = simulate.N - 33                      # index of 2026-10-19T22:00:00
+    peaks = {"FR-01": 5.7, "FR-02": 6.4, "FR-03": 5.1, "FR-04": 4.9}   # at the last power-off reading
+    fridge = [r for u in simulate.FRIDGES
+              for r in simulate.fridge_rows(u, rng, outage=(first, 16, peaks[u]))]
+    weekly = simulate.weekly_dates(date(2026, 10, 19))   # Mondays this time
+    gens = simulate.generator_rows(rng, weekly, fails={"GEN-A": {"2026-10-19"}})
+    write_csv(folder, "fridge_telemetry.csv", simulate.FRIDGE_FIELDS, fridge)
+    write_csv(folder, "generator_tests.csv", simulate.GEN_FIELDS, gens)
+    write_maintenance(folder, fix_fr02=True)
 
 
 if __name__ == "__main__":
@@ -180,3 +220,6 @@ if __name__ == "__main__":
     write_generators(rng)
     write_maintenance()
     print("wrote fridge_telemetry.csv, generator_tests.csv, maintenance_log.csv in", OUT)
+    write_healthy()     # own random generators, so scenario 1 stays byte-identical
+    write_blackout()
+    print("wrote the same three files in data/all_healthy and data/blackout_day")

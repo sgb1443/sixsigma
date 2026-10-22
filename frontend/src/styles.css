@@ -17,7 +17,7 @@ h3 { font-size: 14px; margin: 14px 0 6px; }
 .unit-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .chip { display: inline-block; padding: 2px 8px; border-radius: 12px; font-weight: 600; border: 2px solid; background: #fff; }
 .chip.OK { border-color: var(--good); }
-.chip.MAINTENANCE_COMPLETE { border-color: #0ca30c; }
+.chip.TASKS_COMPLETE { border-color: #0ca30c; }
 .chip.WATCH { border-color: var(--warn); }
 .chip.MAINTENANCE { border-color: var(--serious); }
 .chip.URGENT { border-color: var(--crit); }
@@ -62,3 +62,15 @@ td, th { border-bottom: 1px solid var(--grid); padding: 2px 8px; text-align: lef
 /* the unit picked in the status bar: outlined in the bar and first in the list */
 .light.picked { outline: 3px solid #0b0b0b; outline-offset: 2px; }
 .unit.picked { outline: 2px solid #2a78d6; outline-offset: 4px; border-radius: 4px; }
+.detail { border: 1px solid var(--grid); border-radius: 6px; padding: 8px 12px; margin: 8px 0; background: #fff; }
+
+/* finished tasks stay listed, greyed, with a green DONE chip */
+.alert.done { opacity: 0.85; }
+.chip.TASKS_COMPLETE { border-color: #0ca30c; }
+
+/* blood location: EMPTY / IN USE on fridges, and the move / move-back step */
+.occ { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
+.occ.empty { text-decoration: underline; }
+.blood { margin: 6px 0 6px 12px; font-weight: 600; }
+.blood .go { font-weight: 700; border: 2px solid #d03b3b; }
+.blood.warn { color: #d03b3b; }

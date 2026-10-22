@@ -157,7 +157,7 @@ tasks:
     result: ""
 
   - id: H-09
-    title: Maintenance complete button - operator clears a unit's alerts, new flags re-trigger
+    title: Task complete per alert (replaces Acknowledge and the unit button); finished tasks stay as green DONE rows; colours recalculate; TASKS COMPLETE; new flags re-trigger
     points: "supports 15 - Tool Design: clear user and use case (the manager can close the loop on today's list)"
     status: done
     owner: "team 11 + implementer agent (claude code)"
@@ -167,14 +167,14 @@ tasks:
       Agreed with the team 2026-10-20. SPEC section 6 "How alerts clear" is the
       rule. Workflow only: app/qc.py and every statistic stay unchanged.
     definition_of_done: >
-      python -m pytest tests passes, including rules tests for the
-      Maintenance complete button (alerts resolved) and re-trigger by evidence
-      newer than the completion time; in a browser, pressing Maintenance
-      complete on FR-02 clears its alerts and its tag reads MAINTENANCE COMPLETE.
-    result: "Maintenance complete button (with confirm) resolves a unit's alerts, newer flags re-trigger; plus red/yellow/green status bar and coloured number tiles; pytest 73 passed; browser-checked FR-02"
-
+      python -m pytest tests passes, including rules tests for Task complete
+      (one alert resolved, others untouched), a service-overdue task resetting its
+      days-since to 0, TASKS COMPLETE once all are cleared, and re-trigger by newer
+      evidence; in a browser there is no Acknowledge button, Task complete turns an
+      alert into a green DONE row and the unit's colour drops (red -> yellow -> green).
+    result: "browser-checked: FR-02 coil task -> DONE row, coil 0 days, box ticked and greyed, still URGENT; drift task -> TASKS COMPLETE (green); FR-03 URGENT -> MAINTENANCE -> TASKS COMPLETE via API; no Acknowledge; pytest 113 passed"
   - id: H-10
-    title: Status bar click pins the unit to the top of the attention list
+    title: Status bar click pins the unit to the top and opens its detail inline; Open detail opens under its unit
     points: "supports 15 - Tool Design: clear user and use case"
     status: done
     owner: "team 11 + implementer agent (claude code)"
@@ -182,6 +182,38 @@ tasks:
     owns: ["frontend/src/", "app/static/", "app/manifest.json"]
     definition_of_done: >
       In a browser, clicking a status-bar box moves that unit first in the
-      attention list (outlined) and opens its detail; clicking it again restores
-      the normal order.
-    result: "browser-checked: GEN-A last -> first on click, back to last on second click; pytest 73 passed"
+      attention list (outlined), opens its detail directly under it and scrolls
+      it to the top; clicking it again restores the normal order. "Open detail"
+      opens the panel under that unit's row ("Close detail" closes it), one at a time.
+    result: "browser-checked: GEN-A box -> first, detail inline, row at top of screen, second click restores order; FR-02 Open detail -> inline, button reads Close detail"
+  - id: H-11
+    title: Test scenarios in a dropdown (Mixed problems, All healthy, Blackout day, Random data with answer key) with CSV downloads per scenario
+    points: "10 + 5 - Tool Design: clear demonstration using test datasets; Tool Documentation: 2-3 working test datasets"
+    status: done
+    owner: "team 11 + implementer agent (claude code)"
+    started_at: "2026-10-22 00:00"
+    owns: ["data/", "app/data/", "app/main.py", "app/rules.py", "frontend/src/", "app/static/", "app/manifest.json", "tests/", "app/simulate.py", "demo/README.md", "README.md", "app/README.md"]
+    notes: >
+      app/qc.py stays frozen (no statistic changes). Scenario 1 is the existing
+      data, unchanged. The upload option was not requested.
+    definition_of_done: >
+      python -m pytest tests passes, including tests that scenario 2 has no unit
+      above WATCH, scenario 3 has a CRITICAL fridge and a failed generator start,
+      scenario 4 is deterministic by seed with its planted behaviours flagged across
+      20 seeds (3 documented control-chart false alarms), and the CSV downloads match
+      the bundled files; in a browser the dropdown switches all four and links the CSVs.
+    result: "browser-checked: S1 unchanged, S2 all green, S3 FR-02 CRITICAL / FR-01 + GEN-A URGENT, S4 new week per click with answer key; downloads byte-identical for S1-3; scenario-1 data unchanged; pytest 113 passed"
+
+  - id: H-12
+    title: Move blood from a red fridge to a green (else yellow) backup, and back once its tasks are complete; IN USE / EMPTY on every fridge
+    points: "supports 15 - Tool Design: clear user and use case (the move-blood decision)"
+    status: done
+    owner: "team 11 + implementer agent (claude code)"
+    started_at: "2026-10-22 00:30"
+    owns: ["frontend/src/", "app/static/", "app/manifest.json", "SPEC.md", "README.md", "demo/README.md"]
+    definition_of_done: >
+      In a browser on Scenario 3, FR-02 (CRITICAL) offers a move to a green or else
+      yellow fridge; after confirming, FR-02 shows EMPTY and the backup IN USE holding
+      FR-02's blood; once FR-02's tasks are all complete a move-back button appears
+      and both return to IN USE; the log records blood moved / blood returned.
+    result: "browser-checked: Move FR-02's blood to FR-03 (no green, first yellow) -> EMPTY / IN USE holding; 4 tasks done -> TASKS COMPLETE -> move back -> both IN USE; log rows FR-02 -> FR-03 and FR-03 -> FR-02"

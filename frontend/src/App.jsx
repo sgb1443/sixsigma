@@ -1,13 +1,14 @@
 // The whole page. It computes NO statistics: every number comes from the API's JSON.
 // Parts: helpers, charts (inline SVG), detail panels, then App and the mount at the bottom.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
 
 // ---------- helpers (formatting and log handling only) ----------
-const ICON = { OK: '✔', WATCH: '◉', MAINTENANCE: '⚙', URGENT: '▲', CRITICAL: '⛔', 'MAINTENANCE COMPLETE': '✓' }
+const ICON = { OK: '✔', WATCH: '◉', MAINTENANCE: '⚙', URGENT: '▲', CRITICAL: '⛔', 'TASKS COMPLETE': '✓' }
 const COLS = ['equipment_id', 'service_date', 'service_type', 'technician', 'notes']
-const KEY = 'bbm-local-log'
+const LOG_KEY = 'bbm-local-log:' // + scenario key: one local log per scenario
+const SC_KEY = 'bbm-scenario', SEED_KEY = 'bbm-seed'
 const BLUE = '#2a78d6', RED = '#d03b3b', AMBER = '#fab219', MUTED = '#898781', GRID = '#e1e0d9', AXIS = '#c3c2b7', INK2 = '#52514e'
 const CHECKLIST = {
   fridge: ['coil cleaning', 'probe calibration', 'full service'],
@@ -58,9 +59,15 @@ async function call(url, options) {
   return res.json()
 }
 
-function loadSaved() {
-  try { return JSON.parse(localStorage.getItem(KEY)) || [] } catch { return [] }
+function loadSaved(key) {
+  try { return JSON.parse(localStorage.getItem(LOG_KEY + key)) || [] } catch { return [] }
 }
+function store(k, v) { try { localStorage.setItem(k, v) } catch { /* storage may be blocked: fine */ } }
+function recall(k) { try { return localStorage.getItem(k) } catch { return null } }
+
+const newSeed = () => Math.floor(Math.random() * 1000000)
+// the query string every data request carries: which scenario (and seed, for the random one)
+const qs = (sc) => 'scenario=' + sc.key + (sc.key === 'random' ? '&seed=' + sc.seed : '')
 
 // ---------- chart pieces ----------
 function Axis({ W, H, m, y0, y1, fmt }) {
@@ -206,7 +213,7 @@ function Tile({ label, value, level }) {
   )
 }
 
-function FridgeDetail({ f, logged }) {
+function FridgeDetail({ f }) {
   const c = f.imr, k = f.capability, s = f.stuck_probe
   return (
     <div>
@@ -228,22 +235,21 @@ function FridgeDetail({ f, logged }) {
       <p>{s.stuck ? 'YES: ' + s.message : 'No'} (longest run of identical readings: {s.longest_run})</p>
       <h3>Readings outside 1-6 °C this week</h3>
       {f.out_of_spec.length ? <ul>{f.out_of_spec.map((o) => <li key={o.timestamp}>{when(o.timestamp)}: {num(o.temp_c, 1)} °C</li>)}</ul> : <p>None</p>}
-      <DaysSince d={f.days_since} logged={logged} />
     </div>
   )
 }
 
-function DaysSince({ d, logged }) {
-  // d comes from the bundled history; a "yes" ticked on this page resets that service to today
+function DaysSince({ d }) {
+  // d comes from the attention list, which already counts the log entries made on this page
   return (
     <div>
       <h3>Days since each service</h3>
-      <ul>{Object.entries(d).map(([k, v]) => <li key={k}>{k}: {logged.includes(k) ? '0 days (logged this session)' : v == null ? 'no record' : v + ' days'}</li>)}</ul>
+      <ul>{Object.entries(d).map(([k, v]) => <li key={k}>{k}: {v == null ? 'no record' : v + ' days'}</li>)}</ul>
     </div>
   )
 }
 
-function GeneratorDetail({ g, logged }) {
+function GeneratorDetail({ g }) {
   const d = g.dead_time
   return (
     <div>
@@ -264,21 +270,21 @@ function GeneratorDetail({ g, logged }) {
           <p className="note">The longest test interval that keeps U at or under 1% is about {num(d.t_max_exact, 2)} days; the unit is tested every {d.T}.</p>
         </div>
       )}
-      <DaysSince d={g.days_since} logged={logged} />
     </div>
   )
 }
 
-function Checklist({ kind, id, local, onYes }) {
+function Checklist({ unit, onYes }) {
+  // a box is ticked (and greyed) when the API says that service was done today (0 days since)
   return (
     <div>
-      <h3>Maintenance checklist (tick "yes" to log it with today's date)</h3>
-      {CHECKLIST[kind].map((t) => {
-        const done = local.some((e) => e.equipment_id === id && e.service_type === t)
+      <h3>Routine tasks (tick when done)</h3>
+      {CHECKLIST[unit.kind].map((t) => {
+        const done = unit.days_since[t] === 0
         return (
           <div className="row" key={t}>
-            <label><input type="checkbox" checked={done} disabled={done} onChange={() => onYes(id, t)} /> {t}: done, yes</label>
-            {done && <span className="note">logged this session</span>}
+            <label><input type="checkbox" checked={done} disabled={done} onChange={() => onYes(unit.id, t)} /> {t}: done, yes</label>
+            {done && <span className="note">logged</span>}
           </div>
         )
       })}
@@ -286,27 +292,25 @@ function Checklist({ kind, id, local, onYes }) {
   )
 }
 
-function Detail({ unit, hasAlerts, local, onYes, onComplete }) {
+// Shown inline under its unit in the attention list.
+function Detail({ unit, query, onYes }) {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
-  const logged = local.filter((e) => e.equipment_id === unit.id).map((e) => e.service_type)
   useEffect(() => {
     setData(null); setErr('')
-    call(`${unit.kind === 'fridge' ? 'fridges' : 'generators'}/${unit.id}`)
+    call(`${unit.kind === 'fridge' ? 'fridges' : 'generators'}/${unit.id}?${query}`)
       .then((d) => setData({ id: unit.id, d })).catch((e) => setErr(String(e.message)))
-  }, [unit.id])
+  }, [unit.id, query])
   // until the new unit's data arrives, `data` still holds the previous unit's: never draw it under the new kind
   const shown = data && data.id === unit.id ? data.d : null
   return (
-    <section className="panel" aria-label={'Detail for ' + unit.id}>
+    <section className="detail" aria-label={'Detail for ' + unit.id}>
       <h2>{unit.id} detail</h2>
       {err && <div className="err">{err}</div>}
       {!shown && !err && <p>Loading...</p>}
-      {shown && (unit.kind === 'fridge'
-        ? <FridgeDetail f={shown} logged={logged} />
-        : <GeneratorDetail g={shown} logged={logged} />)}
-      <Checklist kind={unit.kind} id={unit.id} local={local} onYes={onYes} />
-      {hasAlerts && <div className="row"><CompleteButton id={unit.id} onComplete={onComplete} /></div>}
+      {shown && (unit.kind === 'fridge' ? <FridgeDetail f={shown} /> : <GeneratorDetail g={shown} />)}
+      <DaysSince d={unit.days_since} />
+      <Checklist unit={unit} onYes={onYes} />
     </section>
   )
 }
@@ -316,8 +320,60 @@ function Chip({ status }) { return <span className={'chip ' + status.replace(' '
 
 // Status bar: one box per unit in a fixed order, so the board never jumps around.
 // green = working, yellow = maintenance needed, red = act now (fridges: move the blood)
-const LIGHT = { OK: 'green', WATCH: 'green', 'MAINTENANCE COMPLETE': 'green', MAINTENANCE: 'yellow', URGENT: 'red', CRITICAL: 'red' }
-function StatusBar({ att, pinned, onPick }) {
+const LIGHT = { OK: 'green', WATCH: 'green', 'TASKS COMPLETE': 'green', MAINTENANCE: 'yellow', URGENT: 'red', CRITICAL: 'red' }
+// Where each fridge's blood is, from the log: "blood moved" (notes "FR-02 -> FR-04") and
+// "blood returned" (notes "FR-04 -> FR-02"). Returns {source fridge: fridge now holding its blood}.
+function bloodAway(local) {
+  const away = {}
+  for (const e of local) {
+    const m = /^(\S+) -> (\S+)$/.exec(e.notes || '')
+    if (!m) continue
+    if (e.service_type === 'blood moved') away[m[1]] = m[2]
+    if (e.service_type === 'blood returned') delete away[m[2]]
+  }
+  return away
+}
+
+// Backup fridge for a red fridge's blood: a green fridge first, else a yellow one; never an emptied
+// fridge; among equals prefer one not already holding other blood, then the lowest id.
+function pickBackup(att, source, away) {
+  const holding = new Set(Object.values(away))
+  const ok = att.units.filter((u) => u.kind === 'fridge' && u.id !== source && !(u.id in away))
+  const rank = (u) => [LIGHT[u.status] === 'green' ? 0 : LIGHT[u.status] === 'yellow' ? 1 : 9, holding.has(u.id) ? 1 : 0]
+  const best = ok.filter((u) => rank(u)[0] < 9)
+    .sort((a, b) => rank(a)[0] - rank(b)[0] || rank(a)[1] - rank(b)[1] || a.id.localeCompare(b.id))
+  return best[0] || null
+}
+
+function Occupancy({ u, away }) {
+  if (u.kind !== 'fridge') return null
+  const guests = Object.keys(away).filter((s) => away[s] === u.id)
+  if (u.id in away) return <span className="occ empty">EMPTY: blood in {away[u.id]}</span>
+  return <span className="occ">IN USE{guests.length ? ' · also holding ' + guests.join(', ') + "'s blood" : ''}</span>
+}
+
+// The move-blood step for one fridge: move out while red, move back once every task is done.
+function BloodMove({ u, att, away, onMove, onReturn }) {
+  const [asking, setAsking] = useState(false)
+  if (u.kind !== 'fridge') return null
+  if (u.id in away) {
+    const holder = away[u.id]
+    if (u.alerts.length > 0) return <div className="blood">Blood is in {holder} until {u.id}'s tasks are complete.</div>
+    return <div className="blood"><button className="go" onClick={() => onReturn(u.id, holder)}>All tasks complete: move blood back from {holder} to {u.id}</button></div>
+  }
+  if (LIGHT[u.status] !== 'red') return null
+  const to = pickBackup(att, u.id, away)
+  if (!to) return <div className="blood warn">No green or yellow fridge is free: call for a backup fridge now.</div>
+  if (!asking) return <div className="blood"><button className="go" onClick={() => setAsking(true)}>Move {u.id}'s blood to {to.id}</button> <span className="note">({to.id} is {to.status})</span></div>
+  return (
+    <div className="blood confirm">Moved {u.id}'s blood to {to.id}?{' '}
+      <button onClick={() => { setAsking(false); onMove(u.id, to.id) }}>Yes, moved</button>{' '}
+      <button onClick={() => setAsking(false)}>Cancel</button>
+    </div>
+  )
+}
+
+function StatusBar({ att, pinned, onPick, away }) {
   const units = [...att.units].sort((a, b) => a.id.localeCompare(b.id))
   return (
     <section className="statusbar" aria-label="Status of every unit">
@@ -326,7 +382,8 @@ function StatusBar({ att, pinned, onPick }) {
           aria-pressed={pinned === u.id} title={pinned === u.id ? 'Unpin ' + u.id : 'Show ' + u.id + ' first'}>
           <b>{u.id}</b>
           <span>{ICON[u.status]} {u.status}</span>
-          {LIGHT[u.status] === 'red' && u.kind === 'fridge' && <span className="act">move blood</span>}
+          {LIGHT[u.status] === 'red' && u.kind === 'fridge' && !(u.id in away) && <span className="act">move blood</span>}
+          <Occupancy u={u} away={away} />
         </button>
       ))}
       <p className="sub legend">green = working · yellow = maintenance needed · red = urgent: act now (fridge: move blood to backup)</p>
@@ -334,59 +391,73 @@ function StatusBar({ att, pinned, onPick }) {
   )
 }
 
-// Two steps, because a completed unit moves down the list and a quick double click
-// would otherwise land on the next unit's button.
-function CompleteButton({ id, onComplete }) {
+// Two steps, because a finished alert disappears from the list and a quick double click
+// would otherwise land on the next alert's button.
+function TaskButton({ alert, onDone }) {
   const [asking, setAsking] = useState(false)
-  if (!asking) return <button onClick={() => setAsking(true)}>Maintenance complete</button>
+  if (!asking) return <button onClick={() => setAsking(true)}>Task complete</button>
   return (
     <span className="confirm">
-      Mark all of {id}'s maintenance done?{' '}
-      <button onClick={() => { setAsking(false); onComplete(id) }}>Yes, complete</button>{' '}
+      Done: {alert.task.replace(/\.$/, '')}?{' '}
+      <button onClick={() => { setAsking(false); onDone(alert) }}>Yes</button>{' '}
       <button onClick={() => setAsking(false)}>Cancel</button>
     </span>
   )
 }
 
-function AckText({ alert, local }) {
-  const mine = local.filter((e) => e.service_type === 'acknowledge' && e.notes === alert.id).pop()
-  if (!alert.acknowledged) return null
-  return <span className="note"> acknowledged{mine ? ` by ${mine.technician} at ${when(mine.service_date)}` : ' (in the log)'}</span>
+// A finished task stays on the list as a green DONE row, so the unit's colour change has a visible reason.
+function DoneRow({ alert, local }) {
+  const row = local.filter((e) => e.service_type === 'task complete' && e.notes.startsWith(alert.id)).pop()
+  return (
+    <div className="alert done">
+      <span className="chip TASKS_COMPLETE">✓ DONE</span> {alert.message}
+      {row && <span className="note"> (completed by {row.technician} at {when(row.service_date)})</span>}
+    </div>
+  )
 }
 
-function Attention({ att, pinned, local, onAck, onOpen, onComplete }) {
+function Attention({ att, pinned, local, onTask, open, onToggle, detail, away, onMove, onReturn }) {
   // a unit picked in the status bar goes first; the rest keep the API's most-urgent-first order
   const units = pinned ? [...att.units].sort((a, b) => (b.id === pinned) - (a.id === pinned)) : att.units
   return (
     <section className="panel" id="attention">
       <h2>Today's attention list</h2>
       {units.map((u) => (
-        <div className={'unit' + (u.id === pinned ? ' picked' : '')} key={u.id}>
+        <div className={'unit' + (u.id === pinned ? ' picked' : '')} key={u.id} id={'unit-' + u.id}>
           {u.id === pinned && <div className="note">Picked from the status bar (click its box again to unpin)</div>}
           <div className="unit-head">
             <Chip status={u.status} />
             <b>{u.id}</b> <span className="sub">{u.kind}</span>
-            <button onClick={() => onOpen(u)}>Open detail</button>
-            {u.alerts.length > 0 && <CompleteButton id={u.id} onComplete={onComplete} />}
+            <button onClick={() => onToggle(u)}>{open === u.id ? 'Close detail' : 'Open detail'}</button>
+            <Occupancy u={u} away={away} />
           </div>
-          {u.maintenance_complete_at && u.resolved_alerts.length > 0 && (
-            <div className="alert">Resolved by {u.resolved_by} at {when(u.maintenance_complete_at)}: {u.resolved_alerts.map((a) => a.id).join(', ')}</div>
-          )}
-          {u.alerts.length === 0 && <div className="alert">No alerts.</div>}
+          <BloodMove u={u} att={att} away={away} onMove={onMove} onReturn={onReturn} />
+          {u.alerts.length === 0 && u.resolved_alerts.length === 0 && <div className="alert">No alerts.</div>}
           {u.alerts.map((a) => (
             <div className="alert" key={a.id}>
               <Chip status={a.tier} /> {a.message}
               {a.escalated && <span className="note"> (escalated from {a.base_tier})</span>}
-              {a.retriggered && <span className="note"> (re-triggered after maintenance)</span>}
+              {a.retriggered && <span className="note"> (re-triggered after a task was completed)</span>}
               <div className="task">Task: {a.task}</div>
               <div className="row">
-                <button onClick={() => onAck(u.id, a.id)}>Acknowledge</button>
-                <AckText alert={a} local={local} />
+                <TaskButton alert={a} onDone={(al) => onTask(u.id, al)} />
               </div>
             </div>
           ))}
+          {u.resolved_alerts.map((a) => <DoneRow key={a.id} alert={a} local={local} />)}
+          {open === u.id && detail(u)}
         </div>
       ))}
+    </section>
+  )
+}
+
+function AnswerKey({ planted }) {
+  return (
+    <section className="panel">
+      <h2>Answer key (what was planted)</h2>
+      <p className="sub">Compare this with the status bar above. The tool never sees this list.</p>
+      <ul>{Object.entries(planted).sort().map(([id, text]) => <li key={id}><b>{id}</b>: {text}</li>)}</ul>
     </section>
   )
 }
@@ -425,30 +496,52 @@ function LogPanel({ local, bundled, onReplace, setErr }) {
 // ---------- App ----------
 function App() {
   const [name, setName] = useState('manager')
-  const [local, setLocal] = useState(loadSaved)
+  const [scenarios, setScenarios] = useState([])
+  const [sc, setSc] = useState(null) // { key, seed }: the scenario on screen (seed only for 'random')
+  const [local, setLocal] = useState([])
   const [att, setAtt] = useState(null)
   const [bundled, setBundled] = useState(0)
-  const [open, setOpen] = useState(null)
+  const [open, setOpen] = useState(null) // id of the unit whose detail is open under its row
   const [pinned, setPinned] = useState(null)
-  const pick = (u) => {
-    if (pinned === u.id) { setPinned(null); return }
-    setPinned(u.id); setOpen(u)
-    document.getElementById('attention')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
   const [err, setErr] = useState('')
+  const latest = useRef(0) // numbers the requests, so a late answer for an old scenario is ignored
 
-  const refresh = (log) => {
-    try { localStorage.setItem(KEY, JSON.stringify(log)) } catch { /* storage may be blocked: fine */ }
-    call('attention', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ log }) })
-      .then((a) => { setAtt(a); setErr('') })
-      .catch((e) => setErr(String(e.message)))
+  const refresh = (log, s) => {
+    store(LOG_KEY + s.key, JSON.stringify(log))
+    const id = ++latest.current
+    call('attention?' + qs(s), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ log }) })
+      .then((a) => { if (id === latest.current) { setAtt(a); setErr('') } })
+      .catch((e) => { if (id === latest.current) setErr(String(e.message)) })
   }
-  const change = (log) => { setLocal(log); refresh(log) }
+  // Show a scenario: its own saved log, no open detail, no pin. A new random seed starts with an empty log.
+  const enter = (key, seedIn, fresh) => {
+    const s = { key, seed: key === 'random' ? (fresh || seedIn == null ? newSeed() : seedIn) : null }
+    const log = key === 'random' && fresh ? [] : loadSaved(key)
+    store(SC_KEY, key)
+    if (s.seed != null) store(SEED_KEY, String(s.seed))
+    setSc(s); setLocal(log); setOpen(null); setPinned(null); setAtt(null); setErr('')
+    refresh(log, s)
+    call('log?' + qs(s)).then((l) => setBundled(l.length)).catch(() => {})
+  }
+  const change = (log) => { setLocal(log); refresh(log, sc) }
   useEffect(() => {
-    refresh(local)
-    call('log').then((l) => setBundled(l.length)).catch(() => {})
+    call('scenarios').then((list) => {
+      setScenarios(list)
+      const saved = recall(SC_KEY), seed = recall(SEED_KEY)
+      enter(list.some((x) => x.key === saved) ? saved : 'mixed', seed ? Number(seed) : null, false)
+    }).catch((e) => setErr(String(e.message)))
   }, [])
 
+  // status bar: pin the unit to the top and open its detail there; a second click undoes both
+  const pick = (u) => {
+    if (pinned === u.id) { setPinned(null); setOpen(null); return }
+    setPinned(u.id); setOpen(u.id)
+  }
+  useEffect(() => { // after the pinned unit has moved to the top, scroll its row to the top of the view
+    if (pinned) document.getElementById('unit-' + pinned)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [pinned])
+
+  const away = bloodAway(local)
   const add = (equipment_id, service_type, notes) =>
     change([...local, { equipment_id, service_date: nowIso(), service_type, technician: name || 'manager', notes: notes || '' }])
 
@@ -456,13 +549,42 @@ function App() {
     <main>
       <h1>Blood bank equipment monitor</h1>
       <p className="sub">As of {att ? when(att.as_of) : '...'} (the last reading in the data).</p>
-      <p className="sub">How to read this: start at the top and work down; the most urgent unit is first. Open a unit for its chart and numbers. Acknowledge says "seen, on it" and does not clear a data alert. Maintenance complete logs who and when and resolves the unit's current alerts; a new flag afterwards brings an alert back.</p>
+      <p className="sub">How to read this: start at the top and work down; the most urgent unit is first. Open a unit for its chart and numbers. Task complete logs who and when and resolves that one alert (it turns into a green DONE row and the unit's colour is recalculated from what is left); a new flag afterwards brings it back. When every alert of a unit is done it shows TASKS COMPLETE.</p>
+      {sc && (
+        <section className="panel">
+          <div className="row">
+            <label>Test dataset:{' '}
+              <select value={sc.key} onChange={(e) => enter(e.target.value, null, true)}>
+                {scenarios.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <p className="sub">{scenarios.find((x) => x.key === sc.key)?.description}</p>
+          {sc.key === 'random' && (
+            <div className="row">
+              <span>Seed {sc.seed} · </span>
+              <button onClick={() => enter('random', null, true)}>New random data</button>
+            </div>
+          )}
+          <p className="sub">
+            Download this dataset (CSV):{' '}
+            {['fridge_telemetry', 'generator_tests', 'maintenance_log'].map((f, i) => (
+              <span key={f}>{i ? ' · ' : ''}<a href={`data/${f}.csv?${qs(sc)}`} download>{f}.csv</a></span>
+            ))}
+          </p>
+        </section>
+      )}
       <div className="row"><label>Your name <input type="text" value={name} onChange={(e) => setName(e.target.value)} /></label></div>
       {err && <div className="err">{err}</div>}
-      {att && <StatusBar att={att} pinned={pinned} onPick={pick} />}
-      {att ? <Attention att={att} pinned={pinned} local={local} onAck={(id, aid) => add(id, 'acknowledge', aid)} onOpen={setOpen} onComplete={(id) => add(id, 'maintenance complete', '')} /> : !err && <p>Loading...</p>}
-      {open && <Detail unit={open} hasAlerts={!!att && att.units.some((u) => u.id === open.id && u.alerts.length > 0)} local={local}
-        onYes={(id, t) => add(id, t, '')} onComplete={(id) => add(id, 'maintenance complete', '')} />}
+      {att && <StatusBar att={att} pinned={pinned} onPick={pick} away={away} />}
+      {att && att.answer_key && <AnswerKey planted={att.answer_key} />}
+      {att ? <Attention att={att} pinned={pinned} local={local} open={open}
+        onTask={(id, a) => add(id, 'task complete', a.id + ': ' + a.task)}
+        away={away}
+        onMove={(from, to) => add(from, 'blood moved', from + ' -> ' + to)}
+        onReturn={(back, holder) => add(back, 'blood returned', holder + ' -> ' + back)}
+        onToggle={(u) => setOpen(open === u.id ? null : u.id)}
+        detail={(u) => <Detail unit={u} query={qs(sc)} onYes={(id, t) => add(id, 'task complete', id + ': ' + t)} />} /> : !err && <p>Loading...</p>}
       <LogPanel local={local} bundled={bundled} onReplace={change} setErr={setErr} />
     </main>
   )

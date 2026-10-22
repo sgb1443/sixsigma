@@ -26,7 +26,25 @@
       "checksum": "789ee353b44223a8ed8031aa190631dd"
     },
     "README.md": {
-      "checksum": "a5c13911267816a7ea0f96604227b110"
+      "checksum": "bd4334c61a62050fae6537a6af45aecb"
+    },
+    "data/all_healthy/fridge_telemetry.csv": {
+      "checksum": "db62f30eead275400bff591cd99990d1"
+    },
+    "data/all_healthy/generator_tests.csv": {
+      "checksum": "8276624107b837b6ed7a5a23892b9bb0"
+    },
+    "data/all_healthy/maintenance_log.csv": {
+      "checksum": "22a4b3b823d362590be20dcf6aba6b8b"
+    },
+    "data/blackout_day/fridge_telemetry.csv": {
+      "checksum": "75a7e8debddc0e9271cb968ef40f50bf"
+    },
+    "data/blackout_day/generator_tests.csv": {
+      "checksum": "dc53e5b19616765452c42af8ae6b8f68"
+    },
+    "data/blackout_day/maintenance_log.csv": {
+      "checksum": "22a4b3b823d362590be20dcf6aba6b8b"
     },
     "data/fridge_telemetry.csv": {
       "checksum": "fb24368319f2fe8107a549c35893e2d9"
@@ -41,7 +59,7 @@
       "checksum": "29783205c16ee33039e044f46e110bc3"
     },
     "main.py": {
-      "checksum": "05fcfdf7b1f1cc77ba178254aed776b0"
+      "checksum": "29f6906becd49c4f9c1fa04a59ccda19"
     },
     "manifestme.sh": {
       "checksum": "9c9ee7ef0921d84fc4df02a255c6a651"
@@ -50,16 +68,19 @@
       "checksum": "670162ce0a50ff853625300b1376e27a"
     },
     "rules.py": {
-      "checksum": "8f5d3b3fdef35568512b23d8958433fc"
+      "checksum": "993c373c377a6bd2383fa176489c5cd8"
     },
-    "static/assets/index-C1zGDyC6.js": {
-      "checksum": "c7fa076887605adeb4c8368c6e23c665"
+    "simulate.py": {
+      "checksum": "ad2a91c2db9426a4f6ed07d41a5e5e85"
     },
-    "static/assets/index-hy-srU7V.css": {
-      "checksum": "743c4ff3d1c261b014abe2e86014a408"
+    "static/assets/index-BcmPJWEh.js": {
+      "checksum": "19a38976a44e0074faf0245b47d2abbf"
+    },
+    "static/assets/index-Bqrbru4o.css": {
+      "checksum": "93bb05631ba671d5258a3ad8447068de"
     },
     "static/index.html": {
-      "checksum": "921f98c552f75869f3f5b9a2afd16140"
+      "checksum": "41e603ef86925af8fc974322f2f14b5d"
     },
     "testme.sh": {
       "checksum": "339f90c43b5fbdbc411f309bfc4a8794"

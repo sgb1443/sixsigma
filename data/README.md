@@ -12,7 +12,7 @@ python data/make_data.py
 The script uses only the Python standard library. "As of" date for all checks: **2026-10-20**.
 Times are local time, ISO 8601, no time zone.
 
-There are exactly three CSV files.
+There are exactly three CSV files per scenario (the codebook below applies to every scenario; see [Scenarios](#scenarios)).
 
 ## 1. `fridge_telemetry.csv`
 
@@ -114,3 +114,18 @@ Generators: GEN-A last serviced 2026-03-15 (219 days), GEN-B 2026-02-20 (242 day
 
 The facilities team keeps a service log (a spreadsheet or a work-order system). Each completed job
 is one row. In the tool, each "yes" on the maintenance checklist adds a row with today's date.
+
+## Scenarios
+
+The tool ships with four test scenarios. **The codebook above (every column, unit and allowed value) applies to every scenario**: each one has the same three files with the same columns and formats, the same 14-day window (2026-10-06T06:15:00 to 2026-10-20T06:00:00) and the same "now" (2026-10-20 06:00). Scenarios 1 to 3 are files made by `python data/make_data.py` (fixed seeds); scenario 1 is the main files above and never changes. Copies of all of them are in `app/data/` (a test checks they stay identical).
+
+| # | Scenario (API key) | Folder | What is planted | What the tool should show |
+|---|---|---|---|---|
+| 1 | Mixed problems (`mixed`) | `data/` (the three files above) | The stories in the tables above. | FR-02 URGENT, FR-03 URGENT, GEN-B URGENT, FR-04 MAINTENANCE, FR-01 WATCH, GEN-A OK (see `demo/README.md`). |
+| 2 | All healthy (`healthy`) | `data/all_healthy/` | 4 fridges at about 4.0 C (3.4 to 5.0 C all week), steady duty about 40%, power always on, brief single-reading door openings (none in the last 24 h), no stuck runs. Both generators start in 3-7 s, battery 12.7 V or more, fuel 62% or more, no failures. Weekly start tests on Tuesdays 2026-04-28 to 2026-10-20, monthly load tests as in scenario 1 (latest 2026-10-14). Every service within its interval (FR-02 coils cleaned 2026-09-02). | All six units **OK** (green). |
+| 3 | Blackout day (`blackout`) | `data/blackout_day/` | Grid outage: `power_on = 0` for all 4 fridges from **2026-10-19T22:00:00 to 2026-10-20T01:45:00** (16 readings, duty 0); power is back at 02:00. Temperature climbs while off and peaks at the last off reading (01:45), then recovers: FR-02 **6.4 C** (above 6.0 from 01:00), FR-01 **5.9 C** (5.5 or more from 01:00), FR-03 5.1 C, FR-04 5.0 C. GEN-A: weekly start test on **2026-10-19** (Mondays this time) has `started = 0`, battery 11.8 V; GEN-B healthy. Before the outage everything is normal; services within interval. | FR-02 **CRITICAL** (move blood now); FR-01 **URGENT** (power-loss alert plus a reading of 5.5 C or more); FR-03 and FR-04 **MAINTENANCE** (power loss, hourly temperatures beyond the limits); GEN-A **URGENT** (failed start, low battery, p-chart signal, dead-time risk; escalated because the failure is over 24 h old and not acknowledged); GEN-B OK. |
+| 4 | Random data (`random`) | none (made in memory by `app/simulate.py`) | See below. | See below. |
+
+**Scenario 2 and the method's false alarms.** The control chart judges the latest week against limits from the first week, using hourly means of correlated readings, so even a perfectly healthy fridge sometimes gets a WATCH or even a drift alert from noise alone (a run of 8 hourly means on one side of the centre line). We did not change the method. The scenario-2 file is the first of the candidate seeds we tried that came out all OK; with the same generator, a few of the seeds we tried gave one stray WATCH or MAINTENANCE. To keep the demonstration clean, the healthy fridges have no door openings in the last 24 h: the chart flags the hour of every door opening (it heats that hour by about 0.3 C). If a stray WATCH ever appears on healthy data, that is the method's false-alarm rate, not a planted problem.
+
+**Scenario 4: random data.** `random_scenario(seed)` in `app/simulate.py` builds the three tables from a random seed (the page picks one and shows it; "New random data" picks another). The same seed always gives the same data. Each fridge independently gets one behaviour: healthy, drifting warm (last 4 days, below 5.5 C), door-seal problem, stuck probe (last 24 h), or a power outage in the last 24 h (sometimes above 6 C). Each generator is healthy or has recent failed starts with low battery. About one in three seeds also has one overdue service. The API returns an **answer key** (plain-language list of what was planted per unit) with the attention list, and the page shows it, so you can compare it with the status bar. There are no fixed expected numbers. Known limit: the same false-alarm rate as above means a healthy fridge is sometimes flagged (tests/test_scenarios.py lists the seeds where that happened).

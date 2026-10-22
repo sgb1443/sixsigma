@@ -13,8 +13,11 @@ client = TestClient(app)
 
 
 def test_bundled_data_is_identical_to_data_folder():
-    for name in ("fridge_telemetry.csv", "generator_tests.csv", "maintenance_log.csv"):
-        assert (ROOT / "app" / "data" / name).read_bytes() == (ROOT / "data" / name).read_bytes()
+    """Drift guard: app/data/ holds byte-identical copies of every scenario folder in data/."""
+    for folder in ("", "all_healthy", "blackout_day"):
+        for name in ("fridge_telemetry.csv", "generator_tests.csv", "maintenance_log.csv"):
+            mine, theirs = ROOT / "app" / "data" / folder / name, ROOT / "data" / folder / name
+            assert theirs.exists() and mine.read_bytes() == theirs.read_bytes(), (folder, name)
 
 
 def test_health_and_root():
@@ -97,7 +100,34 @@ def test_post_maintenance_complete_on_fr02():
            "service_type": "maintenance complete", "technician": "Sam", "notes": ""}
     body = client.post("/attention", json={"log": [row]}).json()
     fr02 = next(u for u in body["units"] if u["id"] == "FR-02")
-    assert fr02["status"] == "MAINTENANCE COMPLETE" and fr02["alerts"] == []
+    assert fr02["status"] == "TASKS COMPLETE" and fr02["alerts"] == []
     assert fr02["resolved_by"] == "Sam" and fr02["resolved_alerts"]
     others = [u for u in body["units"] if u["id"] != "FR-02"]
     assert all(u["resolved_alerts"] == [] for u in others)
+
+
+def test_post_task_complete_on_coil_alert_resets_days_since_in_the_response():
+    row = {"equipment_id": "FR-02", "service_date": "2026-10-21T09:00:00", "service_type": "task complete",
+           "technician": "Sam", "notes": "FR-02:coil cleaning overdue: Clean the condenser coils and log it."}
+    body = client.post("/attention", json={"log": [row]}).json()
+    fr02 = next(u for u in body["units"] if u["id"] == "FR-02")
+    assert fr02["days_since"]["coil cleaning"] == 0
+    assert [a["id"] for a in fr02["resolved_alerts"]] == ["FR-02:coil cleaning overdue"]
+    assert "FR-02:control chart drift" in [a["id"] for a in fr02["alerts"]]
+
+
+def test_dataset_csv_download_is_the_bundled_file_or_the_generated_week():
+    r = client.get("/data/fridge_telemetry.csv")
+    assert r.status_code == 200 and r.content == open("data/fridge_telemetry.csv", "rb").read()
+    assert 'filename="mixed_fridge_telemetry.csv"' in r.headers["content-disposition"]
+    r = client.get("/data/generator_tests.csv?scenario=blackout")
+    assert r.content == open("data/blackout_day/generator_tests.csv", "rb").read()
+    a = client.get("/data/fridge_telemetry.csv?scenario=random&seed=2026").text
+    b = client.get("/data/fridge_telemetry.csv?scenario=random&seed=2026").text
+    assert a == b and a.startswith("unit_id,timestamp,temp_c")     # same seed, same week
+
+
+def test_dataset_csv_download_errors():
+    assert client.get("/data/nope.csv").status_code == 404
+    assert client.get("/data/fridge_telemetry.csv?scenario=nope").status_code == 404
+    assert client.get("/data/fridge_telemetry.csv?scenario=random").status_code == 422
