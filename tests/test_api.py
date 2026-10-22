@@ -131,3 +131,11 @@ def test_dataset_csv_download_errors():
     assert client.get("/data/nope.csv").status_code == 404
     assert client.get("/data/fridge_telemetry.csv?scenario=nope").status_code == 404
     assert client.get("/data/fridge_telemetry.csv?scenario=random").status_code == 422
+
+
+def test_only_the_move_blood_alerts_are_flagged_moves_blood():
+    units = client.get("/attention?scenario=blackout").json()["units"]
+    fr02 = next(u for u in units if u["id"] == "FR-02")
+    flagged = sorted(a["id"] for a in fr02["alerts"] if a.get("moves_blood"))
+    assert flagged == ["FR-02:reading outside 1-6 C", "FR-02:temperature near the limit"]
+    assert not any(a.get("moves_blood") for u in units if u["kind"] == "generator" for a in u["alerts"])

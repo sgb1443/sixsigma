@@ -348,29 +348,40 @@ function pickBackup(att, source, away) {
 function Occupancy({ u, away }) {
   if (u.kind !== 'fridge') return null
   const guests = Object.keys(away).filter((s) => away[s] === u.id)
-  if (u.id in away) return <span className="occ empty">EMPTY: blood in {away[u.id]}</span>
+  if (u.id in away) return <span className="occ empty">EMPTY: blood in {away[u.id] === 'backup' ? 'backup fridge' : away[u.id]}</span>
   return <span className="occ">IN USE{guests.length ? ' · also holding ' + guests.join(', ') + "'s blood" : ''}</span>
 }
 
-// The move-blood step for one fridge: move out while red, move back once every task is done.
-function BloodMove({ u, att, away, onMove, onReturn }) {
+// Alerts whose task is to move the blood (flagged by the API): CRITICAL out of spec, URGENT near the limit.
+const needsMove = (u, away) => u.kind === 'fridge' && !(u.id in away) && u.alerts.some((a) => a.moves_blood)
+
+// Takes the place of "Task complete" on a move-blood alert: moving the blood IS that task, so the
+// move also completes every move-blood alert of the fridge.
+function MoveButton({ u, att, away, onMove }) {
   const [asking, setAsking] = useState(false)
-  if (u.kind !== 'fridge') return null
-  if (u.id in away) {
-    const holder = away[u.id]
-    if (u.alerts.length > 0) return <div className="blood">Blood is in {holder} until {u.id}'s tasks are complete.</div>
-    return <div className="blood"><button className="go" onClick={() => onReturn(u.id, holder)}>All tasks complete: move blood back from {holder} to {u.id}</button></div>
-  }
-  if (LIGHT[u.status] !== 'red') return null
-  const to = pickBackup(att, u.id, away)
-  if (!to) return <div className="blood warn">No green or yellow fridge is free: call for a backup fridge now.</div>
-  if (!asking) return <div className="blood"><button className="go" onClick={() => setAsking(true)}>Move {u.id}'s blood to {to.id}</button> <span className="note">({to.id} is {to.status})</span></div>
-  return (
-    <div className="blood confirm">Moved {u.id}'s blood to {to.id}?{' '}
-      <button onClick={() => { setAsking(false); onMove(u.id, to.id) }}>Yes, moved</button>{' '}
-      <button onClick={() => setAsking(false)}>Cancel</button>
-    </div>
+  const free = pickBackup(att, u.id, away)
+  const to = free ? free.id : 'backup'           // no green or yellow fridge: a backup fridge brought in
+  const where = free ? to : 'a backup fridge'
+  if (!asking) return (
+    <>
+      <button className="move" onClick={() => setAsking(true)}>Move {u.id}'s blood to {where}</button>{' '}
+      <span className="note">{free ? `(${to} is ${free.status})` : '(no green or yellow fridge is free: bring in a backup fridge)'}</span>
+    </>
   )
+  return (
+    <span className="confirm">Moved {u.id}'s blood to {where}?{' '}
+      <button className="move" onClick={() => { setAsking(false); onMove(u, to) }}>Yes, moved</button>{' '}
+      <button onClick={() => setAsking(false)}>Cancel</button>
+    </span>
+  )
+}
+
+// Under an emptied fridge: wait for its tasks, then offer to move the blood back.
+function BloodReturn({ u, away, onReturn }) {
+  if (u.kind !== 'fridge' || !(u.id in away)) return null
+  const holder = away[u.id] === 'backup' ? 'the backup fridge' : away[u.id]
+  if (u.alerts.length > 0) return <div className="blood">Blood is in {holder} until {u.id}'s tasks are complete.</div>
+  return <div className="blood"><button className="go" onClick={() => onReturn(u.id, away[u.id])}>All tasks complete: move blood back from {holder} to {u.id}</button></div>
 }
 
 function StatusBar({ att, pinned, onPick, away }) {
@@ -382,7 +393,7 @@ function StatusBar({ att, pinned, onPick, away }) {
           aria-pressed={pinned === u.id} title={pinned === u.id ? 'Unpin ' + u.id : 'Show ' + u.id + ' first'}>
           <b>{u.id}</b>
           <span>{ICON[u.status]} {u.status}</span>
-          {LIGHT[u.status] === 'red' && u.kind === 'fridge' && !(u.id in away) && <span className="act">move blood</span>}
+          {needsMove(u, away) && <span className="act">move blood</span>}
           <Occupancy u={u} away={away} />
         </button>
       ))}
@@ -418,20 +429,22 @@ function DoneRow({ alert, local }) {
 
 function Attention({ att, pinned, local, onTask, open, onToggle, detail, away, onMove, onReturn }) {
   // a unit picked in the status bar goes first; the rest keep the API's most-urgent-first order
-  const units = pinned ? [...att.units].sort((a, b) => (b.id === pinned) - (a.id === pinned)) : att.units
+  // ... but a unit with nothing left to do drops back to its place at the end (TASKS COMPLETE / OK sort last)
+  const pin = att.units.find((u) => u.id === pinned && u.alerts.length > 0)?.id
+  const units = pin ? [...att.units].sort((a, b) => (b.id === pin) - (a.id === pin)) : att.units
   return (
     <section className="panel" id="attention">
       <h2>Today's attention list</h2>
       {units.map((u) => (
-        <div className={'unit' + (u.id === pinned ? ' picked' : '')} key={u.id} id={'unit-' + u.id}>
-          {u.id === pinned && <div className="note">Picked from the status bar (click its box again to unpin)</div>}
+        <div className={'unit' + (u.id === pin ? ' picked' : '')} key={u.id} id={'unit-' + u.id}>
+          {u.id === pin && <div className="note">Picked from the status bar (click its box again to unpin)</div>}
           <div className="unit-head">
             <Chip status={u.status} />
             <b>{u.id}</b> <span className="sub">{u.kind}</span>
             <button onClick={() => onToggle(u)}>{open === u.id ? 'Close detail' : 'Open detail'}</button>
             <Occupancy u={u} away={away} />
           </div>
-          <BloodMove u={u} att={att} away={away} onMove={onMove} onReturn={onReturn} />
+          <BloodReturn u={u} away={away} onReturn={onReturn} />
           {u.alerts.length === 0 && u.resolved_alerts.length === 0 && <div className="alert">No alerts.</div>}
           {u.alerts.map((a) => (
             <div className="alert" key={a.id}>
@@ -440,7 +453,9 @@ function Attention({ att, pinned, local, onTask, open, onToggle, detail, away, o
               {a.retriggered && <span className="note"> (re-triggered after a task was completed)</span>}
               <div className="task">Task: {a.task}</div>
               <div className="row">
-                <TaskButton alert={a} onDone={(al) => onTask(u.id, al)} />
+                {a.moves_blood && needsMove(u, away)
+                  ? <MoveButton u={u} att={att} away={away} onMove={onMove} />
+                  : <TaskButton alert={a} onDone={(al) => onTask(u.id, al)} />}
               </div>
             </div>
           ))}
@@ -542,8 +557,12 @@ function App() {
   }, [pinned])
 
   const away = bloodAway(local)
-  const add = (equipment_id, service_type, notes) =>
-    change([...local, { equipment_id, service_date: nowIso(), service_type, technician: name || 'manager', notes: notes || '' }])
+  const row = (equipment_id, service_type, notes) =>
+    ({ equipment_id, service_date: nowIso(), service_type, technician: name || 'manager', notes: notes || '' })
+  const add = (equipment_id, service_type, notes) => change([...local, row(equipment_id, service_type, notes)])
+  // Moving the blood is the task of every move-blood alert of that fridge: log the move and complete them.
+  const moveBlood = (u, to) => change([...local, row(u.id, 'blood moved', u.id + ' -> ' + to),
+    ...u.alerts.filter((a) => a.moves_blood).map((a) => row(u.id, 'task complete', `${a.id}: ${a.task} (blood moved to ${to})`))])
 
   return (
     <main>
@@ -581,7 +600,7 @@ function App() {
       {att ? <Attention att={att} pinned={pinned} local={local} open={open}
         onTask={(id, a) => add(id, 'task complete', a.id + ': ' + a.task)}
         away={away}
-        onMove={(from, to) => add(from, 'blood moved', from + ' -> ' + to)}
+        onMove={moveBlood}
         onReturn={(back, holder) => add(back, 'blood returned', holder + ' -> ' + back)}
         onToggle={(u) => setOpen(open === u.id ? null : u.id)}
         detail={(u) => <Detail unit={u} query={qs(sc)} onYes={(id, t) => add(id, 'task complete', id + ': ' + t)} />} /> : !err && <p>Loading...</p>}

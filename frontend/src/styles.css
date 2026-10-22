@@ -74,3 +74,6 @@ td, th { border-bottom: 1px solid var(--grid); padding: 2px 8px; text-align: lef
 .blood { margin: 6px 0 6px 12px; font-weight: 600; }
 .blood .go { font-weight: 700; border: 2px solid #d03b3b; }
 .blood.warn { color: #d03b3b; }
+
+/* the move-blood action replaces Task complete on a move-blood alert: solid red so it stands out */
+button.move { background: #d03b3b; color: #fff; border: 2px solid #d03b3b; font-weight: 800; }

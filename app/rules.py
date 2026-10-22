@@ -313,6 +313,7 @@ def fridge_status(telemetry, unit_id, log, as_of=None):
                              f"max {bad_recent['temp_c'].max():.1f}).",
                              "Move the blood now and quarantine it for review.",
                              bad_recent["timestamp"].iloc[-1]))
+        alerts[-1]["moves_blood"] = True    # its task is a blood move: the page shows a Move blood button
     elif summary["out_of_spec"]:     # earlier in the week; since = the latest such reading
         last_bad = pd.Timestamp(summary["out_of_spec"][-1]["timestamp"])
         alerts.append(_alert(unit_id, "excursion to review", "data", "MAINTENANCE", last_bad,
@@ -349,6 +350,7 @@ def fridge_status(telemetry, unit_id, log, as_of=None):
                              "a maintenance alert is active.",
                              "Swap the unit and move the blood to a backup unit.",
                              near["timestamp"].iloc[-1]))   # last_seen: latest near-limit reading
+        alerts[-1]["moves_blood"] = True
 
     fields = _finish(unit_id, alerts, log, now)
     return {"unit_id": unit_id, "as_of": _fmt(now), **fields, "alerts": alerts,

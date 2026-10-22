@@ -81,8 +81,9 @@ Everything you click is kept in the **Log** panel. **Download log CSV** saves it
 
 ## Moving blood (Scenario 3: Blackout day, checked in a browser)
 1. Pick **Scenario 3: Blackout day**. FR-02 is **CRITICAL** (red), FR-01 URGENT (red), FR-03 and FR-04 MAINTENANCE (yellow); every fridge box says **IN USE**.
-2. FR-02 shows **Move FR-02's blood to FR-03** (no fridge is green, so the first yellow one). Confirm: FR-02 becomes **EMPTY: blood in FR-03**, FR-03 **IN USE · also holding FR-02's blood**. The log gets `blood moved | FR-02 -> FR-03`.
-3. Press **Task complete** on each of FR-02's four alerts: each turns into a green ✓ DONE row, and FR-02 becomes **✓ TASKS COMPLETE** (green).
+2. FR-02's CRITICAL and near-limit alerts each show a red **Move FR-02's blood to FR-03** button instead of Task complete (no fridge is green, so the first yellow one). Confirm: both alerts turn into green ✓ DONE rows and FR-02 drops to MAINTENANCE; FR-02 becomes **EMPTY: blood in FR-03**, FR-03 **IN USE · also holding FR-02's blood**. The log gets `blood moved | FR-02 -> FR-03` and a task-complete row for each of the two alerts.
+3. Press **Task complete** on FR-02's two remaining alerts (drift, power loss): FR-02 becomes **✓ TASKS COMPLETE** (green).
+   If no fridge is green or yellow (e.g. Scenario 4, seed 1), the red button reads "Move FR-03's blood to a backup fridge" and the log row is `FR-03 -> backup`.
 4. **All tasks complete: move blood back from FR-03 to FR-02** appears. Press it: both are **IN USE** again; the log gets `blood returned | FR-03 -> FR-02`.
 
 ## Download a dataset
